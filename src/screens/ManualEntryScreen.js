@@ -14,7 +14,7 @@ export default function ManualEntryScreen({ navigation }) {
       alert('Please enter a barcode');
       return;
     }
-    
+
     setLoading(true);
     try {
       const result = await analyzeBarcode(barcode);
@@ -28,12 +28,12 @@ export default function ManualEntryScreen({ navigation }) {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: '#ecfdf5' }}>
       <Card>
-        <Text style={{ fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 }}>
+        <Text selectable={true} style={{ fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 }}>
           ⌨️ Enter Barcode
         </Text>
 
         <View style={{ backgroundColor: '#fef3c7', padding: 15, borderRadius: 15, marginVertical: 15 }}>
-          <Text style={{ color: '#92400e', fontWeight: '600' }}>Test Codes (tap to copy):</Text>
+          <Text selectable={true} style={{ color: '#92400e', fontWeight: '600' }}>Test Codes (tap to copy):</Text>
           <CopyableText style={{ color: '#92400e', marginTop: 8, fontWeight: '500' }}>
             🥜 3017620422003 (Nutella)
           </CopyableText>
@@ -42,7 +42,7 @@ export default function ManualEntryScreen({ navigation }) {
           </CopyableText>
         </View>
 
-        <Text style={{ fontSize: 14, color: '#666', marginBottom: 10 }}>Product Barcode:</Text>
+        <Text selectable={true} style={{ fontSize: 14, color: '#666', marginBottom: 10 }}>Product Barcode:</Text>
         <TextInput
           style={styles.input}
           placeholder="Enter product barcode..."
@@ -52,14 +52,14 @@ export default function ManualEntryScreen({ navigation }) {
           editable={!loading}
         />
 
-        <Button 
-          title={loading ? "Analyzing..." : "Analyze Product"} 
+        <Button
+          title={loading ? "Analyzing..." : "Analyze Product"}
           onPress={handleAnalyze}
           color="#10b981"
         />
 
-        <Button 
-          title="Back to Menu" 
+        <Button
+          title="Back to Menu"
           onPress={() => navigation.replace('Welcome')}
           color="#6b7280"
         />

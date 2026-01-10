@@ -1,7 +1,8 @@
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View, Alert } from 'react-native';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import CopyableText from '../components/CopyableText';
+import { addFood } from '../services/foodService';
 
 export default function ResultScreen({ route, navigation }) {
   const { result } = route.params;
@@ -14,7 +15,7 @@ export default function ResultScreen({ route, navigation }) {
         <CopyableText style={{ fontSize: 28, fontWeight: 'bold', textAlign: 'center' }}>
           {result.product}
         </CopyableText>
-        <Text style={{ fontSize: 12, color: '#999', textAlign: 'center', marginTop: 5 }}>
+        <Text selectable={true} style={{ fontSize: 12, color: '#999', textAlign: 'center', marginTop: 5 }}>
           (Tap to copy)
         </Text>
 
@@ -24,7 +25,7 @@ export default function ResultScreen({ route, navigation }) {
 
         {result.nutritionInfo && (
           <View style={{ backgroundColor: '#e0f2fe', padding: 15, borderRadius: 15, marginVertical: 10 }}>
-            <Text style={{ fontWeight: 'bold', color: '#0369a1', marginBottom: 10 }}>📊 Nutritional Info (per 100g)</Text>
+            <Text selectable={true} style={{ fontWeight: 'bold', color: '#0369a1', marginBottom: 10 }}>📊 Nutritional Info (per 100g)</Text>
             <NutritionRow label="Calories" value={result.nutritionInfo.calories} unit="kcal" />
             <NutritionRow label="Protein" value={result.nutritionInfo.protein} unit="g" />
             <NutritionRow label="Carbs" value={result.nutritionInfo.carbs} unit="g" />
@@ -36,7 +37,7 @@ export default function ResultScreen({ route, navigation }) {
 
         {result.allergens?.length > 0 && (
           <View style={{ backgroundColor: '#fee2e2', padding: 15, borderRadius: 15, marginVertical: 10 }}>
-            <Text style={{ fontWeight: 'bold', color: '#991b1b' }}>⚠️ Allergens</Text>
+            <Text selectable={true} style={{ fontWeight: 'bold', color: '#991b1b' }}>⚠️ Allergens</Text>
             <CopyableText style={{ marginTop: 5, color: '#991b1b' }}>
               {result.allergens.join(' • ')}
             </CopyableText>
@@ -45,7 +46,7 @@ export default function ResultScreen({ route, navigation }) {
 
         {result.ingredients && (
           <View style={{ backgroundColor: '#fef3c7', padding: 15, borderRadius: 15, marginVertical: 10 }}>
-            <Text style={{ fontWeight: 'bold', color: '#92400e', marginBottom: 8 }}>🧪 Ingredients</Text>
+            <Text selectable={true} style={{ fontWeight: 'bold', color: '#92400e', marginBottom: 8 }}>🧪 Ingredients</Text>
             <CopyableText style={{ color: '#92400e', fontSize: 12, lineHeight: 18 }}>
               {result.ingredients}
             </CopyableText>
@@ -53,7 +54,7 @@ export default function ResultScreen({ route, navigation }) {
         )}
 
         <View style={{ backgroundColor: '#fff7ed', padding: 15, borderRadius: 15, marginVertical: 10 }}>
-          <Text style={{ fontWeight: 'bold', color: '#ea580c' }}>⚠️ Health Risks</Text>
+          <Text selectable={true} style={{ fontWeight: 'bold', color: '#ea580c' }}>⚠️ Health Risks</Text>
           {result.risks.map((r, i) => (
             <CopyableText key={i} style={{ marginTop: 5, color: '#ea580c' }}>
               • {r}
@@ -67,12 +68,32 @@ export default function ResultScreen({ route, navigation }) {
         </View>
 
         {result.source && (
-          <Text style={{ fontSize: 11, color: '#999', textAlign: 'center', marginVertical: 10 }}>
+          <Text selectable={true} style={{ fontSize: 11, color: '#999', textAlign: 'center', marginVertical: 10 }}>
             Source: {result.source}
           </Text>
         )}
 
-        <Button title="Analyze Another" onPress={() => navigation.replace('Welcome')} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
+          <Button
+            title="Save for Later"
+            onPress={async () => {
+              try {
+                console.log("Saving result:", result);
+                await addFood(result);
+                Alert.alert("Success", "Saved to history!");
+              } catch (e) {
+                console.error("Save error:", e);
+                Alert.alert("Error saving", e.message);
+              }
+            }}
+            color="#f59e0b"
+          />
+          <View style={{ width: 10 }} />
+          <Button
+            title="Scan Again"
+            onPress={() => navigation.replace('Welcome')}
+          />
+        </View>
       </Card>
     </ScrollView>
   );
@@ -82,7 +103,7 @@ function NutritionRow({ label, value, unit }) {
   const displayValue = value === 'N/A' ? 'N/A' : `${parseFloat(value).toFixed(1)}${unit}`;
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 }}>
-      <Text style={{ color: '#0369a1' }}>{label}</Text>
+      <Text selectable={true} style={{ color: '#0369a1' }}>{label}</Text>
       <CopyableText style={{ color: '#0369a1', fontWeight: '600' }}>
         {displayValue}
       </CopyableText>

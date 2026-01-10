@@ -13,10 +13,10 @@ export default function ProductSearchScreen({ navigation }) {
       alert('Please enter a product name');
       return;
     }
-    
+
     setLoading(true);
     Keyboard.dismiss();
-    
+
     try {
       const result = await analyzeProductByName(productName);
       navigation.replace('Result', { result });
@@ -32,20 +32,20 @@ export default function ProductSearchScreen({ navigation }) {
 
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
-      <ScrollView 
+      <ScrollView
         style={styles.container}
         keyboardShouldPersistTaps="handled"
       >
         <Card>
-          <Text style={styles.title}>🔍 Search Product by Name</Text>
-          
+          <Text selectable={true} style={styles.title}>🔍 Search Product by Name</Text>
+
           <View style={styles.infoBox}>
-            <Text style={styles.infoText}>
-              🤖 <Text style={{ fontWeight: 'bold' }}>AI-Powered:</Text> Our system searches the internet database and analyzes nutritional data, ingredients, allergens, and potential health risks.
+            <Text selectable={true} style={styles.infoText}>
+              🤖 <Text selectable={true} style={{ fontWeight: 'bold' }}>AI-Powered:</Text> Our system searches the internet database and analyzes nutritional data, ingredients, allergens, and potential health risks.
             </Text>
           </View>
 
-          <Text style={styles.label}>Product Name:</Text>
+          <Text selectable={true} style={styles.label}>Product Name:</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g., Coca-Cola, Nutella, Apple..."
@@ -58,29 +58,29 @@ export default function ProductSearchScreen({ navigation }) {
           {loading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator size="large" color="#10b981" />
-              <Text style={styles.loadingText}>Analyzing product...</Text>
+              <Text selectable={true} style={styles.loadingText}>Analyzing product...</Text>
             </View>
           ) : (
-            <Button 
-              title="Search & Analyze" 
+            <Button
+              title="Search & Analyze"
               onPress={handleSearch}
               color="#10b981"
             />
           )}
 
-          <Button 
-            title="Back to Menu" 
+          <Button
+            title="Back to Menu"
             onPress={() => navigation.replace('Welcome')}
             color="#6b7280"
           />
 
           <View style={styles.examplesBox}>
-            <Text style={styles.examplesTitle}>Examples:</Text>
-            <Text style={styles.example}>• Coca-Cola</Text>
-            <Text style={styles.example}>• Nutella</Text>
-            <Text style={styles.example}>• Apple</Text>
-            <Text style={styles.example}>• Orange Juice</Text>
-            <Text style={styles.example}>• Whole Wheat Bread</Text>
+            <Text selectable={true} style={styles.examplesTitle}>Examples:</Text>
+            <Text selectable={true} style={styles.example}>• Coca-Cola</Text>
+            <Text selectable={true} style={styles.example}>• Nutella</Text>
+            <Text selectable={true} style={styles.example}>• Apple</Text>
+            <Text selectable={true} style={styles.example}>• Orange Juice</Text>
+            <Text selectable={true} style={styles.example}>• Whole Wheat Bread</Text>
           </View>
         </Card>
       </ScrollView>
@@ -89,8 +89,8 @@ export default function ProductSearchScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
+  container: {
+    flex: 1,
     backgroundColor: '#ecfdf5',
     padding: 0,
   },
