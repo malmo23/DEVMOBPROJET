@@ -3,17 +3,37 @@ import { Share } from 'react-native';
 
 export default function CopyableText({ text, style, children }) {
   const handleCopy = () => {
-    Share.share({
-      message: text || children,
-    }).catch(() => {
-      // Fallback: just show alert
-      Alert.alert('Copied', `Text copied: ${text || children}`);
-    });
+    // Convert children to string properly
+    let textToCopy = text;
+
+    if (!textToCopy && children !== undefined && children !== null) {
+      // Handle different types of children
+      if (typeof children === 'string' || typeof children === 'number') {
+        textToCopy = String(children);
+      } else if (Array.isArray(children)) {
+        textToCopy = children.join(' ');
+      } else if (typeof children === 'object' && children.props?.children) {
+        textToCopy = String(children.props.children);
+      } else {
+        textToCopy = 'Text copied';
+      }
+    }
+
+    // Only share if we have valid text
+    if (textToCopy && String(textToCopy).trim()) {
+      Share.share({
+        message: String(textToCopy),
+      }).catch((error) => {
+        // Fallback: just show alert
+        console.log('Share error:', error);
+        Alert.alert('Copied', String(textToCopy));
+      });
+    }
   };
 
   return (
     <TouchableOpacity onLongPress={handleCopy} onPress={handleCopy}>
-      <Text 
+      <Text
         selectable={true}
         style={[style, styles.copyableText]}
       >

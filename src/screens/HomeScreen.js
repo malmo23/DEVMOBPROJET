@@ -44,20 +44,38 @@ function HomeScreen({ navigation }) {
     return new Date(timestamp.seconds * 1000).toLocaleDateString();
   };
 
+  const handleViewDetails = (item) => {
+    // Navigate to ResultScreen with the saved product data
+    navigation.navigate('Main', {
+      screen: 'Result',
+      params: { result: item }
+    });
+  };
+
   const renderItem = ({ item }) => (
     <Card style={styles.card}>
-      <View style={styles.cardContent}>
-        <View>
-          <Text selectable={true} style={styles.foodName}>{item.product}</Text>
-          <Text selectable={true} style={styles.date}>{formatDate(item.createdAt)}</Text>
+      <TouchableOpacity
+        onPress={() => handleViewDetails(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.cardContent}>
+          <View style={{ flex: 1 }}>
+            <Text selectable={true} style={styles.foodName}>{item.product}</Text>
+            <Text selectable={true} style={styles.date}>{formatDate(item.createdAt)}</Text>
+          </View>
+          <Text selectable={true} style={[styles.score, { color: item.score > 70 ? '#22c55e' : item.score > 40 ? '#f59e0b' : '#ef4444' }]}>
+            {item.score}
+          </Text>
         </View>
-        <Text selectable={true} style={[styles.score, { color: item.score > 70 ? '#22c55e' : item.score > 40 ? '#f59e0b' : '#ef4444' }]}>
-          {item.score}
-        </Text>
-      </View>
-      <TouchableOpacity onPress={() => handleDelete(item.id)}>
-        <Text style={styles.deleteText}>Delete</Text>
       </TouchableOpacity>
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          onPress={() => handleDelete(item.id)}
+          style={styles.deleteButton}
+        >
+          <Text style={styles.deleteText}>🗑️ Delete</Text>
+        </TouchableOpacity>
+      </View>
     </Card>
   );
 
@@ -120,10 +138,22 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  deleteButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
   deleteText: {
     color: '#ef4444',
-    textAlign: 'right',
     fontSize: 14,
+    fontWeight: '600',
   },
   emptyText: {
     textAlign: 'center',

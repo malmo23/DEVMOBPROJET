@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import CopyableText from '../components/CopyableText';
@@ -52,11 +52,18 @@ export default function ManualEntryScreen({ navigation }) {
           editable={!loading}
         />
 
-        <Button
-          title={loading ? "Analyzing..." : "Analyze Product"}
-          onPress={handleAnalyze}
-          color="#10b981"
-        />
+        {loading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color="#10b981" />
+            <Text selectable={true} style={styles.loadingText}>Analyzing product...</Text>
+          </View>
+        ) : (
+          <Button
+            title="Analyze Product"
+            onPress={handleAnalyze}
+            color="#10b981"
+          />
+        )}
 
         <Button
           title="Back to Menu"
@@ -77,5 +84,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 15,
     backgroundColor: '#f0fdf4',
+  },
+  loadingBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30,
+    marginBottom: 15,
+  },
+  loadingText: {
+    marginTop: 15,
+    fontSize: 14,
+    color: '#10b981',
+    fontWeight: '600',
   },
 });
