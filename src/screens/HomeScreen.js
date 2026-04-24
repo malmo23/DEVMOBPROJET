@@ -17,14 +17,14 @@ function RiskChip({ score }) {
   );
 }
 
-function HistoryCard({ item, onDelete }) {
+function HistoryCard({ item, onDelete, onPress }) {
   const formatDate = (ts) => {
     if (!ts || !ts.seconds) return 'Just now';
     return new Date(ts.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.8} style={styles.card}>
       <View style={styles.cardRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.foodName} numberOfLines={1}>{item.product}</Text>
@@ -35,7 +35,7 @@ function HistoryCard({ item, onDelete }) {
       <TouchableOpacity onPress={() => onDelete(item.id)} style={styles.deleteBtn} activeOpacity={0.7}>
         <Text style={styles.deleteText}>🗑  Remove</Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -66,6 +66,10 @@ function HomeScreen({ navigation }) {
     }
   };
 
+  const handleViewDetails = (item) => {
+    navigation.navigate('Result', { result: item });
+  };
+
   return (
     <LinearGradient colors={['#0a1628', '#0d2137', '#0f3d2e']} style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -94,7 +98,13 @@ function HomeScreen({ navigation }) {
         <FlatList
           data={foods}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <HistoryCard item={item} onDelete={handleDelete} />}
+          renderItem={({ item }) => (
+            <HistoryCard 
+              item={item} 
+              onDelete={handleDelete} 
+              onPress={handleViewDetails} 
+            />
+          )}
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
           onRefresh={loadFoods}

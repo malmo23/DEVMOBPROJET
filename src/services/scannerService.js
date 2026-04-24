@@ -4,66 +4,99 @@ const localDb = {
     score: 38, 
     allergens: ["Hazelnuts", "Milk", "Soy"], 
     diseasePredictions: ["Type 2 Diabetes (Chronic sugar exposure)", "Hyperlipidemia (High Cholesterol)", "Obesity-related complications"],
-    imageUrl: "https://images.openfoodfacts.org/images/products/301/762/042/2003/front_fr.581.400.jpg"
+    imageUrl: "https://images.openfoodfacts.org/images/products/301/762/042/2003/front_fr.581.400.jpg",
+    nutritionInfo: {
+      calories: 539,
+      protein: 6.3,
+      carbs: 57.5,
+      fat: 30.9,
+      sugar: 56.3,
+      salt: 0.107
+    },
+    ingredients: "Sugar, Palm Oil, Hazelnuts (13%), Skimmed Milk Powder (8.7%), Fat-Reduced Cocoa (7.4%), Emulsifier: Lecithins (Soya), Vanillin",
+    source: "Local Database"
   },
   "5449000000996": { 
     product: "Coca-Cola", 
     score: 12, 
     allergens: [], 
     diseasePredictions: ["Metabolic Syndrome", "Insulin Resistance", "Chronic Dental Erosion", "Increased Kidney Strain"],
-    imageUrl: "https://images.openfoodfacts.org/images/products/544/900/000/0996/front_fr.661.400.jpg"
+    imageUrl: "https://images.openfoodfacts.org/images/products/544/900/000/0996/front_fr.661.400.jpg",
+    nutritionInfo: {
+      calories: 42,
+      protein: 0,
+      carbs: 10.6,
+      fat: 0,
+      sugar: 10.6,
+      salt: 0
+    },
+    ingredients: "Carbonated Water, Sugar, Colour (Caramel E150d), Phosphoric Acid, Natural Flavourings including Caffeine",
+    source: "Local Database"
   },
 };
 
+// Fast barcode analysis
 export const analyzeBarcode = async (barcode) => {
-  // Artificial delay to make analysis feel more thorough (3-5s)
-  await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
-  
+  // Check local database first for instant results
+  if (localDb[barcode]) {
+    return localDb[barcode];
+  }
+
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     const response = await fetch(
       `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`,
-      { timeout: 10000 }
+      { signal: controller.signal }
     );
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) throw new Error('API request failed');
 
     const data = await response.json();
 
     if (data.status === 1 && data.product) {
-      return formatProductData(data.product, `Barcode: ${barcode}`);
+      return formatProductData(data.product, barcode);
     }
 
-    // Fallback to local DB if available
-    return localDb[barcode] || { 
-      product: "Unknown product", 
-      score: 65, 
+    // Fallback for unknown products
+    return { 
+      product: `Unknown Product (${barcode})`, 
+      score: 50, 
       allergens: [], 
       diseasePredictions: ["No long-term data found for this barcode"], 
+      nutritionInfo: { calories: 'N/A', protein: 'N/A', carbs: 'N/A', fat: 'N/A', sugar: 'N/A', salt: 'N/A' },
+      ingredients: 'Not available',
+      source: 'Unknown Product',
       imageUrl: null 
     };
   } catch (error) {
     console.log('Barcode API Error:', error);
     return localDb[barcode] || { 
-      product: "Unknown product", 
-      score: 65, 
+      product: "Connection Error", 
+      score: 50, 
       allergens: [], 
       diseasePredictions: ["Long-term data unavailable due to connection error"], 
-      imageUrl: null
+      imageUrl: null,
+      source: 'Offline Fallback'
     };
   }
 };
 
 // AI-powered product search using Open Food Facts API
 export const analyzeProductByName = async (productName) => {
-  // Artificial delay to make analysis feel more thorough (3-5s)
-  await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
+  console.log('🔍 Searching for product:', productName);
 
   try {
-    // Search using Open Food Facts API
-    const response = await fetch(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&json=1&page_size=1`,
-      { timeout: 10000 }
-    );
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&json=1&page_size=5`;
+    const response = await fetch(searchUrl, { signal: controller.signal });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) throw new Error('API request failed');
 
@@ -73,10 +106,9 @@ export const analyzeProductByName = async (productName) => {
       return generateAIAnalysis(productName, null);
     }
 
-    const product = data.products[0];
-    return formatProductData(product, productName);
+    return formatProductData(data.products[0], productName);
   } catch (error) {
-    console.log('API Error:', error);
+    console.log('Product search error:', error.message);
     return generateAIAnalysis(productName, null);
   }
 };
@@ -89,47 +121,36 @@ const predictDiseases = (product, nutrition) => {
   const ingredients = (product.ingredients_text || '').toLowerCase();
   const additives = product.additives_tags || [];
 
-  // Sugar-related diseases
   if (!isNaN(sugar) && sugar > 15) {
     predictions.push("Type 2 Diabetes (Chronic exposure to high sugar)");
     predictions.push("Metabolic Syndrome & Insulin Resistance");
     predictions.push("Non-alcoholic Fatty Liver Disease");
   }
 
-  // Salt-related diseases
   if (!isNaN(salt) && salt > 1.2) {
     predictions.push("Hypertension (Chronic High Blood Pressure)");
     predictions.push("Cardiovascular Heart Disease");
-    predictions.push("Increased Stroke Risk");
   }
 
-  // Fat/Obesity related
   if (!isNaN(fat) && fat > 20) {
     predictions.push("Hyperlipidemia (High Cholesterol)");
     predictions.push("Coronary Artery Disease");
-    predictions.push("Obesity-related Complications");
   }
 
-  // Cancer risks
-  if (ingredients.includes('nitrite') || ingredients.includes('nitrate') || ingredients.includes('processed meat')) {
-    predictions.push("Colorectal Cancer (linked to processed nitrates)");
+  if (ingredients.includes('nitrite') || ingredients.includes('nitrate')) {
+    predictions.push("Colorectal Cancer risk (linked to nitrates)");
   }
   
   if (ingredients.includes('palm oil')) {
     predictions.push("Increased Risk of Atherosclerosis");
   }
 
-  if (additives.length > 5 || ingredients.includes('artificial')) {
+  if (additives.length > 5) {
     predictions.push("Chronic Systemic Inflammation");
-    predictions.push("Potential Gut Microbiome Disruption");
   }
 
   if (predictions.length === 0) {
-    if (product.nutriscore_grade === 'a' || product.nutriscore_grade === 'b') {
-      predictions.push("Low risk for chronic diseases with balanced use");
-    } else {
-      predictions.push("General Metabolic Strain if consumed excessively");
-    }
+    predictions.push("Low risk for chronic diseases with balanced use");
   }
 
   return predictions;
@@ -142,7 +163,7 @@ const formatProductData = (product, searchTerm) => {
   const allergens = product.allergens_tags ? product.allergens_tags.map(a => a.replace('en:', '').toUpperCase()) : [];
 
   const nutritionInfo = {
-    calories: product.nutriments?.['energy-kcal'] || product.nutriments?.['energy-kcal_100g'] || 'N/A',
+    calories: product.nutriments?.['energy-kcal_100g'] || product.nutriments?.['energy-kcal'] || 'N/A',
     protein: product.nutriments?.['proteins_100g'] || 'N/A',
     carbs: product.nutriments?.['carbohydrates_100g'] || 'N/A',
     fat: product.nutriments?.['fat_100g'] || 'N/A',
@@ -150,18 +171,16 @@ const formatProductData = (product, searchTerm) => {
     salt: product.nutriments?.['salt_100g'] || 'N/A',
   };
 
-  const diseasePredictions = predictDiseases(product, nutritionInfo);
-
   return {
     product: name,
     score,
     allergens,
     nutritionInfo,
-    diseasePredictions,
+    diseasePredictions: predictDiseases(product, nutritionInfo),
     brands: product.brands || 'Unknown',
     ingredients: product.ingredients_text_en || product.ingredients_text || 'Not available',
     source: 'Open Food Facts Database',
-    imageUrl: product.image_url || product.image_front_url || product.image_small_url || null
+    imageUrl: product.image_url || product.image_front_url || null
   };
 };
 
@@ -173,51 +192,38 @@ const scoreToNumber = (grade) => {
 const calculateScore = (product) => {
   let score = 100;
   const nuts = product.nutriments || {};
-
   if (nuts['sugars_100g'] > 15) score -= 20;
   if (nuts['fat_100g'] > 20) score -= 15;
   if (nuts['salt_100g'] > 1) score -= 10;
-  if (nuts['energy-kcal_100g'] > 300) score -= 10;
-
   return Math.max(10, score);
 };
 
 const generateAIAnalysis = (productName, productData) => {
-  // Fallback AI analysis when API fails
   const lower = productName.toLowerCase();
   let score = 50;
   const diseasePredictions = [];
 
-  if (lower.includes('soda') || lower.includes('cola') || lower.includes('energy drink')) {
+  if (lower.includes('soda') || lower.includes('cola')) {
     score = 20;
-    diseasePredictions.push('Type 2 Diabetes (High sugar consumption)', 'Metabolic Syndrome', 'Dental Caries');
+    diseasePredictions.push('Type 2 Diabetes', 'Metabolic Syndrome', 'Dental Caries');
   } else if (lower.includes('candy') || lower.includes('chocolate')) {
     score = 35;
-    diseasePredictions.push('Obesity', 'Insulin Resistance', 'Metabolic Strain');
-  } else if (lower.includes('bread') || lower.includes('grain')) {
-    score = 75;
-    diseasePredictions.push('Celiac Disease (if gluten sensitive)', 'Spiking Blood Glucose');
+    diseasePredictions.push('Obesity', 'Insulin Resistance');
   } else if (lower.includes('vegetable') || lower.includes('fruit')) {
     score = 85;
-    diseasePredictions.push('Low risk for chronic diseases with balanced use');
+    diseasePredictions.push('Low risk for chronic diseases');
   } else {
-    diseasePredictions.push('Inconclusive data for long-term prediction. Verify label for high sugar/salt.');
+    diseasePredictions.push('Inconclusive data for long-term prediction.');
   }
 
   return {
     product: productName,
     score,
     allergens: [],
-    nutritionInfo: {
-      calories: 'N/A',
-      protein: 'N/A',
-      carbs: 'N/A',
-      fat: 'N/A',
-      sugar: 'N/A',
-      salt: 'N/A',
-    },
+    nutritionInfo: { calories: 'N/A', protein: 'N/A', carbs: 'N/A', fat: 'N/A', sugar: 'N/A', salt: 'N/A' },
     diseasePredictions,
-    source: 'AI Analysis (limited data)',
+    ingredients: 'Not available (AI estimation)',
+    source: 'AI Analysis',
     imageUrl: null
   };
 };
