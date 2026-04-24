@@ -1,17 +1,18 @@
 import { View } from 'react-native';
+import { colors, radius, shadows } from '../theme';
 
-export default function Card({ children }) {
+export default function Card({ children, style }) {
   return (
-    <View style={{
-      backgroundColor: 'white',
-      borderRadius: 24,
-      padding: 24,
-      margin: 20,
-      shadowColor: '#000',
-      shadowOpacity: 0.15,
-      shadowRadius: 20,
-      elevation: 10,
-    }}>
+    <View style={[
+      {
+        backgroundColor: colors.gradientCard,
+        borderRadius: radius.xl,
+        padding: 24,
+        margin: 16,
+        ...shadows.card,
+      },
+      style,
+    ]}>
       {children}
     </View>
   );

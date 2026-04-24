@@ -1,15 +1,63 @@
 const localDb = {
-  "3017620422003": { product: "Nutella 400g", score: 38, allergens: ["Hazelnuts", "Milk", "Soy"], risks: ["Very high sugar", "Palm oil", "Additives"], cancerRisk: "Moderate (palm oil)" },
-  "5449000000996": { product: "Coca-Cola", score: 12, allergens: [], risks: ["73g sugar", "Phosphoric acid"], cancerRisk: "High with regular use" },
+  "3017620422003": { 
+    product: "Nutella 400g", 
+    score: 38, 
+    allergens: ["Hazelnuts", "Milk", "Soy"], 
+    diseasePredictions: ["Type 2 Diabetes (Chronic sugar exposure)", "Hyperlipidemia (High Cholesterol)", "Obesity-related complications"],
+    imageUrl: "https://images.openfoodfacts.org/images/products/301/762/042/2003/front_fr.581.400.jpg"
+  },
+  "5449000000996": { 
+    product: "Coca-Cola", 
+    score: 12, 
+    allergens: [], 
+    diseasePredictions: ["Metabolic Syndrome", "Insulin Resistance", "Chronic Dental Erosion", "Increased Kidney Strain"],
+    imageUrl: "https://images.openfoodfacts.org/images/products/544/900/000/0996/front_fr.661.400.jpg"
+  },
 };
 
 export const analyzeBarcode = async (barcode) => {
-  await new Promise(r => setTimeout(r, 1200));
-  return localDb[barcode] || { product: "Unknown product", score: 65, allergens: [], risks: ["No data"], cancerRisk: "Not classified" };
+  // Artificial delay to make analysis feel more thorough (3-5s)
+  await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
+  
+  try {
+    const response = await fetch(
+      `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`,
+      { timeout: 10000 }
+    );
+
+    if (!response.ok) throw new Error('API request failed');
+
+    const data = await response.json();
+
+    if (data.status === 1 && data.product) {
+      return formatProductData(data.product, `Barcode: ${barcode}`);
+    }
+
+    // Fallback to local DB if available
+    return localDb[barcode] || { 
+      product: "Unknown product", 
+      score: 65, 
+      allergens: [], 
+      diseasePredictions: ["No long-term data found for this barcode"], 
+      imageUrl: null 
+    };
+  } catch (error) {
+    console.log('Barcode API Error:', error);
+    return localDb[barcode] || { 
+      product: "Unknown product", 
+      score: 65, 
+      allergens: [], 
+      diseasePredictions: ["Long-term data unavailable due to connection error"], 
+      imageUrl: null
+    };
+  }
 };
 
 // AI-powered product search using Open Food Facts API
 export const analyzeProductByName = async (productName) => {
+  // Artificial delay to make analysis feel more thorough (3-5s)
+  await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
+
   try {
     // Search using Open Food Facts API
     const response = await fetch(
@@ -33,6 +81,60 @@ export const analyzeProductByName = async (productName) => {
   }
 };
 
+const predictDiseases = (product, nutrition) => {
+  const predictions = [];
+  const sugar = parseFloat(nutrition.sugar);
+  const salt = parseFloat(nutrition.salt);
+  const fat = parseFloat(nutrition.fat);
+  const ingredients = (product.ingredients_text || '').toLowerCase();
+  const additives = product.additives_tags || [];
+
+  // Sugar-related diseases
+  if (!isNaN(sugar) && sugar > 15) {
+    predictions.push("Type 2 Diabetes (Chronic exposure to high sugar)");
+    predictions.push("Metabolic Syndrome & Insulin Resistance");
+    predictions.push("Non-alcoholic Fatty Liver Disease");
+  }
+
+  // Salt-related diseases
+  if (!isNaN(salt) && salt > 1.2) {
+    predictions.push("Hypertension (Chronic High Blood Pressure)");
+    predictions.push("Cardiovascular Heart Disease");
+    predictions.push("Increased Stroke Risk");
+  }
+
+  // Fat/Obesity related
+  if (!isNaN(fat) && fat > 20) {
+    predictions.push("Hyperlipidemia (High Cholesterol)");
+    predictions.push("Coronary Artery Disease");
+    predictions.push("Obesity-related Complications");
+  }
+
+  // Cancer risks
+  if (ingredients.includes('nitrite') || ingredients.includes('nitrate') || ingredients.includes('processed meat')) {
+    predictions.push("Colorectal Cancer (linked to processed nitrates)");
+  }
+  
+  if (ingredients.includes('palm oil')) {
+    predictions.push("Increased Risk of Atherosclerosis");
+  }
+
+  if (additives.length > 5 || ingredients.includes('artificial')) {
+    predictions.push("Chronic Systemic Inflammation");
+    predictions.push("Potential Gut Microbiome Disruption");
+  }
+
+  if (predictions.length === 0) {
+    if (product.nutriscore_grade === 'a' || product.nutriscore_grade === 'b') {
+      predictions.push("Low risk for chronic diseases with balanced use");
+    } else {
+      predictions.push("General Metabolic Strain if consumed excessively");
+    }
+  }
+
+  return predictions;
+};
+
 const formatProductData = (product, searchTerm) => {
   const name = product.product_name || searchTerm;
   const score = product.nutriscore_grade ? scoreToNumber(product.nutriscore_grade) : calculateScore(product);
@@ -48,19 +150,18 @@ const formatProductData = (product, searchTerm) => {
     salt: product.nutriments?.['salt_100g'] || 'N/A',
   };
 
-  const risks = identifyRisks(product, nutritionInfo);
-  const cancerRisk = assessCancerRisk(product, nutritionInfo);
+  const diseasePredictions = predictDiseases(product, nutritionInfo);
 
   return {
     product: name,
     score,
     allergens,
     nutritionInfo,
-    risks,
-    cancerRisk,
+    diseasePredictions,
     brands: product.brands || 'Unknown',
     ingredients: product.ingredients_text_en || product.ingredients_text || 'Not available',
-    source: 'Open Food Facts Database'
+    source: 'Open Food Facts Database',
+    imageUrl: product.image_url || product.image_front_url || product.image_small_url || null
   };
 };
 
@@ -81,72 +182,26 @@ const calculateScore = (product) => {
   return Math.max(10, score);
 };
 
-const identifyRisks = (product, nutrition) => {
-  const risks = [];
-
-  if (nutrition.sugar !== 'N/A' && parseFloat(nutrition.sugar) > 15) {
-    risks.push(`High sugar content (${nutrition.sugar}g per 100g)`);
-  }
-  if (nutrition.fat !== 'N/A' && parseFloat(nutrition.fat) > 20) {
-    risks.push(`High fat content (${nutrition.fat}g per 100g)`);
-  }
-  if (nutrition.salt !== 'N/A' && parseFloat(nutrition.salt) > 1) {
-    risks.push(`High sodium content (${nutrition.salt}g per 100g)`);
-  }
-
-  const additives = product.additives_tags || [];
-  if (additives.length > 0) {
-    risks.push(`Contains ${additives.length} additives/preservatives`);
-  }
-
-  if (product.ingredients_text?.toLowerCase().includes('palm oil')) {
-    risks.push('Contains palm oil');
-  }
-
-  if (risks.length === 0) {
-    risks.push('Moderate health profile');
-  }
-
-  return risks;
-};
-
-const assessCancerRisk = (product, nutrition) => {
-  if (product.ingredients_text?.toLowerCase().includes('nitrite') ||
-    product.ingredients_text?.toLowerCase().includes('nitrate')) {
-    return 'Moderate (contains preservatives)';
-  }
-
-  if (nutrition.sugar !== 'N/A' && parseFloat(nutrition.sugar) > 20) {
-    return 'Low (high sugar may increase cancer risk indirectly)';
-  }
-
-  if (product.additives_tags?.length > 5) {
-    return 'Low (multiple additives)';
-  }
-
-  return 'Not classified';
-};
-
 const generateAIAnalysis = (productName, productData) => {
   // Fallback AI analysis when API fails
   const lower = productName.toLowerCase();
   let score = 50;
-  const risks = [];
+  const diseasePredictions = [];
 
   if (lower.includes('soda') || lower.includes('cola') || lower.includes('energy drink')) {
     score = 20;
-    risks.push('High sugar content', 'Caffeine', 'Artificial sweeteners');
+    diseasePredictions.push('Type 2 Diabetes (High sugar consumption)', 'Metabolic Syndrome', 'Dental Caries');
   } else if (lower.includes('candy') || lower.includes('chocolate')) {
     score = 35;
-    risks.push('High sugar', 'High fat');
+    diseasePredictions.push('Obesity', 'Insulin Resistance', 'Metabolic Strain');
   } else if (lower.includes('bread') || lower.includes('grain')) {
     score = 75;
-    risks.push('May contain gluten');
+    diseasePredictions.push('Celiac Disease (if gluten sensitive)', 'Spiking Blood Glucose');
   } else if (lower.includes('vegetable') || lower.includes('fruit')) {
     score = 85;
-    risks.push('No significant risks');
+    diseasePredictions.push('Low risk for chronic diseases with balanced use');
   } else {
-    risks.push('Unable to find detailed data. Please verify ingredients on product label.');
+    diseasePredictions.push('Inconclusive data for long-term prediction. Verify label for high sugar/salt.');
   }
 
   return {
@@ -161,8 +216,8 @@ const generateAIAnalysis = (productName, productData) => {
       sugar: 'N/A',
       salt: 'N/A',
     },
-    risks,
-    cancerRisk: 'Not classified',
-    source: 'AI Analysis (limited data)'
+    diseasePredictions,
+    source: 'AI Analysis (limited data)',
+    imageUrl: null
   };
 };

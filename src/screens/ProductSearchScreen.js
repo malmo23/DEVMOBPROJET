@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet, TouchableWithoutFeedback, Keyboard, ActivityIndicator } from 'react-native';
-import Card from '../components/Card';
+import { View, Text, TextInput, ScrollView, StyleSheet, Keyboard, ActivityIndicator, TouchableOpacity, StatusBar } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Button from '../components/Button';
 import { analyzeProductByName } from '../services/scannerService';
+import { colors, typography, spacing, radius, shadows } from '../theme';
+
+const EXAMPLES = ['Coca-Cola', 'Nutella', 'Apple', 'Orange Juice', 'Whole Wheat Bread'];
 
 export default function ProductSearchScreen({ navigation }) {
   const [productName, setProductName] = useState('');
@@ -13,10 +16,8 @@ export default function ProductSearchScreen({ navigation }) {
       alert('Please enter a product name');
       return;
     }
-
     setLoading(true);
     Keyboard.dismiss();
-
     try {
       const result = await analyzeProductByName(productName);
       navigation.replace('Result', { result });
@@ -26,138 +27,131 @@ export default function ProductSearchScreen({ navigation }) {
     }
   };
 
-  const dismissKeyboard = () => {
-    Keyboard.dismiss();
-  };
-
   return (
-    <TouchableWithoutFeedback onPress={dismissKeyboard}>
-      <ScrollView
-        style={styles.container}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Card>
-          <Text selectable={true} style={styles.title}>🔍 Search Product by Name</Text>
+    <LinearGradient colors={['#0a1628', '#0d2137', '#0f3d2e']} style={styles.container}>
+      <StatusBar barStyle="light-content" />
 
-          <View style={styles.infoBox}>
-            <Text selectable={true} style={styles.infoText}>
-              🤖 <Text selectable={true} style={{ fontWeight: 'bold' }}>AI-Powered:</Text> Our system searches the internet database and analyzes nutritional data, ingredients, allergens, and potential health risks.
-            </Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={styles.backIcon}>‹</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Search by Name</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <View style={styles.card}>
+          {/* Icon + Title */}
+          <View style={styles.iconRow}>
+            <View style={styles.iconCircle}>
+              <Text style={{ fontSize: 30 }}>🔍</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>AI-Powered Search</Text>
+              <Text style={styles.cardSubtitle}>Searches the internet for nutritional data</Text>
+            </View>
           </View>
 
-          <Text selectable={true} style={styles.label}>Product Name:</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., Coca-Cola, Nutella, Apple..."
-            value={productName}
-            onChangeText={setProductName}
-            editable={!loading}
-            placeholderTextColor="#999"
-          />
+          {/* Input */}
+          <Text style={styles.inputLabel}>PRODUCT NAME</Text>
+          <View style={styles.inputWrapper}>
+            <Text style={{ fontSize: 18, marginRight: 8 }}>🥗</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g., Coca-Cola, Nutella…"
+              placeholderTextColor="#aaa"
+              value={productName}
+              onChangeText={setProductName}
+              editable={!loading}
+            />
+            {productName.length > 0 && (
+              <TouchableOpacity onPress={() => setProductName('')} style={{ padding: 4 }}>
+                <Text style={{ color: '#aaa', fontSize: 18 }}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {loading ? (
             <View style={styles.loadingBox}>
-              <ActivityIndicator size="large" color="#10b981" />
-              <Text selectable={true} style={styles.loadingText}>Analyzing product...</Text>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Searching & analyzing…</Text>
             </View>
           ) : (
-            <Button
-              title="Search & Analyze"
-              onPress={handleSearch}
-              color="#10b981"
-            />
+            <Button title="Search & Analyze" onPress={handleSearch} color={colors.primary} />
           )}
 
-          <Button
-            title="Back to Menu"
-            onPress={() => navigation.replace('Welcome')}
-            color="#6b7280"
-          />
-
-          <View style={styles.examplesBox}>
-            <Text selectable={true} style={styles.examplesTitle}>Examples:</Text>
-            <Text selectable={true} style={styles.example}>• Coca-Cola</Text>
-            <Text selectable={true} style={styles.example}>• Nutella</Text>
-            <Text selectable={true} style={styles.example}>• Apple</Text>
-            <Text selectable={true} style={styles.example}>• Orange Juice</Text>
-            <Text selectable={true} style={styles.example}>• Whole Wheat Bread</Text>
+          {/* Example chips */}
+          <View style={styles.examplesSection}>
+            <Text style={styles.sectionLabel}>QUICK EXAMPLES</Text>
+            <View style={styles.chips}>
+              {EXAMPLES.map((ex) => (
+                <TouchableOpacity
+                  key={ex}
+                  onPress={() => setProductName(ex)}
+                  style={styles.chip}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.chipText}>{ex}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </Card>
+        </View>
       </ScrollView>
-    </TouchableWithoutFeedback>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#ecfdf5',
-    padding: 0,
+  container: { flex: 1 },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 56, paddingHorizontal: spacing.lg, paddingBottom: spacing.md,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: '#1f2937',
+  backBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  infoBox: {
-    backgroundColor: '#dbeafe',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#3b82f6',
+  backIcon: { color: colors.white, fontSize: 28, fontWeight: '300', marginTop: -2 },
+  headerTitle: { ...typography.h3, color: colors.white },
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    margin: spacing.lg,
+    padding: spacing.lg,
+    ...shadows.card,
   },
-  infoText: {
-    fontSize: 13,
-    color: '#1e40af',
-    lineHeight: 18,
+  iconRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.lg },
+  iconCircle: {
+    width: 58, height: 58, borderRadius: 29,
+    backgroundColor: '#ede9fe',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: spacing.md,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 10,
+  cardTitle: { ...typography.h3, color: colors.text },
+  cardSubtitle: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  inputLabel: { ...typography.label, color: colors.textMuted, marginBottom: 8 },
+  inputWrapper: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: radius.md,
+    borderWidth: 2, borderColor: colors.purple,
+    paddingHorizontal: 14,
+    marginBottom: spacing.md,
   },
-  input: {
-    borderWidth: 2,
-    borderColor: '#10b981',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    marginBottom: 18,
-    backgroundColor: '#f0fdf4',
-    color: '#1f2937',
+  input: { flex: 1, paddingVertical: 14, fontSize: 16, color: colors.text },
+  loadingBox: { alignItems: 'center', paddingVertical: 24 },
+  loadingText: { ...typography.body, color: colors.primary, marginTop: spacing.sm, fontWeight: '600' },
+  examplesSection: { marginTop: spacing.lg },
+  sectionLabel: { ...typography.label, color: colors.textMuted, marginBottom: spacing.sm },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    backgroundColor: '#ede9fe',
+    borderRadius: radius.full,
+    paddingHorizontal: 14, paddingVertical: 7,
+    borderWidth: 1, borderColor: '#ddd6fe',
   },
-  loadingBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 30,
-  },
-  loadingText: {
-    marginTop: 15,
-    fontSize: 14,
-    color: '#10b981',
-    fontWeight: '600',
-  },
-  examplesBox: {
-    backgroundColor: '#f3e8ff',
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 18,
-    borderLeftWidth: 4,
-    borderLeftColor: '#a78bfa',
-  },
-  examplesTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#6b21a8',
-    marginBottom: 8,
-  },
-  example: {
-    fontSize: 12,
-    color: '#6b21a8',
-    marginVertical: 4,
-  },
+  chipText: { color: '#6d28d9', fontWeight: '600', fontSize: 13 },
 });

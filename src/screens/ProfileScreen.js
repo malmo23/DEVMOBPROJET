@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TextInput, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TextInput, ActivityIndicator, TouchableOpacity, StatusBar } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../config/firebaseConfig';
-import { updateProfile, updateEmail, sendEmailVerification, sendPasswordResetEmail, signOut, verifyBeforeUpdateEmail } from 'firebase/auth';
+import {
+  updateProfile, sendEmailVerification, sendPasswordResetEmail, signOut, verifyBeforeUpdateEmail, updateEmail,
+} from 'firebase/auth';
 import Button from '../components/Button';
-import Card from '../components/Card';
+import { colors, typography, spacing, radius, shadows } from '../theme';
+
+function ActionRow({ icon, label, onPress, danger }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={[styles.actionRow, danger && styles.dangerRow]} activeOpacity={0.7}>
+      <Text style={{ fontSize: 20 }}>{icon}</Text>
+      <Text style={[styles.actionLabel, danger && styles.dangerLabel]}>{label}</Text>
+      <Text style={[styles.actionChevron, danger && styles.dangerLabel]}>›</Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function ProfileScreen({ navigation }) {
   const [user, setUser] = useState(auth.currentUser);
@@ -13,238 +26,204 @@ export default function ProfileScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Listen to user changes (e.g. after email verification)
-    const unsubscribe = auth.onAuthStateChanged((u) => {
+    const unsub = auth.onAuthStateChanged((u) => {
       if (u) {
         setUser(u);
-        // Only update local state if not editing to avoid overwriting user input
-        if (!isEditing) {
-          setName(u.displayName || '');
-          setEmail(u.email || '');
-        }
-      } else {
-        // Logged out
+        if (!isEditing) { setName(u.displayName || ''); setEmail(u.email || ''); }
       }
     });
-    return unsubscribe;
+    return unsub;
   }, [isEditing]);
 
-  const handleUpdateProfile = async () => {
-    if (!name.trim()) {
-      Alert.alert("Error", "Name cannot be empty");
-      return;
-    }
+  const initials = (user?.displayName || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
+  const handleUpdate = async () => {
+    if (!name.trim()) { Alert.alert('Error', 'Name cannot be empty'); return; }
     setLoading(true);
     try {
-      if (name !== user.displayName) {
-        await updateProfile(user, { displayName: name });
-        Alert.alert("Success", "Profile updated successfully!");
-      }
-
+      if (name !== user.displayName) await updateProfile(user, { displayName: name });
       if (email !== user.email) {
-        // For security, changing email often requires recent login or verification
-        // verifyBeforeUpdateEmail is safer and newer, but check if available in your SDK version
-        // If not, revert to updateEmail (which might throw requires-recent-login)
         try {
           await verifyBeforeUpdateEmail(user, email);
-          Alert.alert("Check your email", `Verification email sent to ${email}. Please verify to complete the change.`);
-        } catch (e) {
-          // Fallback or specific error handling
+          Alert.alert('Check your email', `Verification sent to ${email}.`);
+        } catch {
           await updateEmail(user, email);
-          Alert.alert("Success", "Email updated! You may need to verify it.");
+          Alert.alert('Success', 'Email updated.');
         }
+      } else {
+        Alert.alert('Success', 'Profile updated!');
       }
       setIsEditing(false);
-    } catch (error) {
-      Alert.alert("Error", error.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setLoading(false); }
   };
 
-  const handleSendVerification = async () => {
+  const handleVerify = async () => {
     setLoading(true);
     try {
-      console.log("Reloading user before verification...");
       await user.reload();
-      const freshUser = auth.currentUser;
-
-      console.log("Sending verification email to:", freshUser.email);
-      await sendEmailVerification(freshUser);
-
-      Alert.alert(
-        "Email Sent",
-        `Verification link sent to ${freshUser.email}.\n\nPlease check your Inbox and Spam folder.`
-      );
-    } catch (error) {
-      console.error("Verification error:", error);
-      Alert.alert("Error sending email", error.message);
-    } finally {
-      setLoading(false);
-    }
+      await sendEmailVerification(auth.currentUser);
+      Alert.alert('Sent', `Verification link sent to ${auth.currentUser.email}.`);
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setLoading(false); }
   };
 
-  const handleResetPassword = async () => {
+  const handleReset = async () => {
     setLoading(true);
     try {
       await sendPasswordResetEmail(auth, user.email);
-      Alert.alert("Sent", "Password reset email sent. Please check your inbox.");
-    } catch (error) {
-      Alert.alert("Error", error.message);
-    } finally {
-      setLoading(false);
-    }
+      Alert.alert('Sent', 'Password reset email sent.');
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setLoading(false); }
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      // Navigation handled by RootNavigator
-    } catch (error) {
-      Alert.alert("Error", error.message);
-    }
+  const handleLogout = () => {
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log Out', style: 'destructive', onPress: () => signOut(auth) },
+    ]);
   };
 
-  if (!user) return null; // Should be handled by RootNavigator redirecting to AuthStack
+  if (!user) return null;
 
   return (
-    <ScrollView style={styles.container}>
-      <Card>
-        <Text style={styles.header}>👤 My Profile</Text>
+    <LinearGradient colors={['#0a1628', '#0d2137', '#0f3d2e']} style={styles.container}>
+      <StatusBar barStyle="light-content" />
 
-        <View style={styles.infoContainer}>
-          <Text style={styles.label}>Name:</Text>
-          {isEditing ? (
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-            />
-          ) : (
-            <Text selectable={true} style={styles.value}>{user.displayName || 'Not Set'}</Text>
-          )}
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.openDrawer()} style={styles.menuBtn}>
+          <Text style={{ fontSize: 24, color: colors.white }}>☰</Text>
+        </TouchableOpacity>
+      </View>
 
-          <Text style={styles.label}>Email:</Text>
-          {isEditing ? (
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          ) : (
-            <View>
-              <Text selectable={true} style={styles.value}>{user.email}</Text>
-              <Text style={[styles.status, { color: user.emailVerified ? '#10b981' : '#f59e0b' }]}>
-                {user.emailVerified ? '✅ Verified' : '⚠️ Not Verified'}
-              </Text>
-            </View>
-          )}
+      {/* Avatar Header */}
+      <View style={styles.avatarSection}>
+        <View style={styles.avatarCircle}>
+          <Text style={styles.avatarText}>{initials}</Text>
         </View>
+        <Text style={styles.userName}>{user.displayName || 'User'}</Text>
+        <View style={[styles.verifiedBadge, { backgroundColor: user.emailVerified ? '#d1fae522' : '#fef3c722', borderColor: user.emailVerified ? colors.primary : colors.amber }]}>
+          <Text style={[styles.verifiedText, { color: user.emailVerified ? colors.primary : colors.amber }]}>
+            {user.emailVerified ? '✅ Verified Account' : '⚠️ Email not verified'}
+          </Text>
+        </View>
+      </View>
 
-        {loading ? (
-          <ActivityIndicator size="large" color="#10b981" style={{ marginVertical: 20 }} />
-        ) : (
-          <>
-            {isEditing ? (
-              <View style={styles.row}>
-                <Button title="Save" onPress={handleUpdateProfile} color="#10b981" />
-                <View style={{ width: 10 }} />
-                <Button title="Cancel" onPress={() => setIsEditing(false)} color="#6b7280" />
-              </View>
-            ) : (
-              <Button title="Edit Profile" onPress={() => setIsEditing(true)} color="#3b82f6" />
-            )}
-
-            <View style={styles.divider} />
-
-            {!user.emailVerified && (
-              <TouchableOpacity style={styles.actionButton} onPress={handleSendVerification}>
-                <Text style={styles.actionText}>📩 Send Verification Email</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+        {/* Profile Info Card */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Profile Info</Text>
+            {!isEditing && (
+              <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.editBtn}>
+                <Text style={styles.editBtnText}>Edit</Text>
               </TouchableOpacity>
             )}
+          </View>
 
-            <TouchableOpacity style={styles.actionButton} onPress={handleResetPassword}>
-              <Text style={styles.actionText}>🔑 Reset Password</Text>
-            </TouchableOpacity>
+          <Text style={styles.fieldLabel}>FULL NAME</Text>
+          {isEditing ? (
+            <TextInput style={styles.input} value={name} onChangeText={setName} />
+          ) : (
+            <Text style={styles.fieldValue}>{user.displayName || 'Not Set'}</Text>
+          )}
 
-            <TouchableOpacity style={[styles.actionButton, styles.logoutButton]} onPress={handleLogout}>
-              <Text style={[styles.actionText, styles.logoutText]}>🚪 Log Out</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </Card>
-    </ScrollView>
+          <View style={styles.divider} />
+
+          <Text style={styles.fieldLabel}>EMAIL ADDRESS</Text>
+          {isEditing ? (
+            <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+          ) : (
+            <Text style={styles.fieldValue}>{user.email}</Text>
+          )}
+
+          {loading ? (
+            <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 20 }} />
+          ) : isEditing ? (
+            <View style={styles.editActions}>
+              <Button title="Save Changes" onPress={handleUpdate} color={colors.primary} style={{ flex: 1, marginRight: 6 }} />
+              <Button title="Cancel" onPress={() => setIsEditing(false)} color={colors.textMuted} style={{ flex: 1, marginLeft: 6 }} />
+            </View>
+          ) : null}
+        </View>
+
+        {/* Security Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Security</Text>
+          {!user.emailVerified && (
+            <ActionRow icon="📩" label="Send Verification Email" onPress={handleVerify} />
+          )}
+          <ActionRow icon="🔑" label="Reset Password" onPress={handleReset} />
+        </View>
+
+        {/* Danger Zone */}
+        <View style={[styles.card, styles.dangerCard]}>
+          <Text style={[styles.cardTitle, { color: colors.red }]}>Danger Zone</Text>
+          <ActionRow icon="🚪" label="Log Out" onPress={handleLogout} danger />
+        </View>
+      </ScrollView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: '#ecfdf5',
-  },
-  header: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#064e3b',
-  },
-  infoContainer: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 18,
-    color: '#1f2937',
-    fontWeight: '500',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    color: '#1f2937',
-    backgroundColor: '#f9fafb',
-  },
-  status: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-  row: {
+  container: { flex: 1 },
+  topBar: {
     flexDirection: 'row',
+    marginTop: 40,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+  },
+  menuBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#e5e7eb',
-    marginVertical: 20,
+  avatarSection: { alignItems: 'center', paddingTop: 20, paddingBottom: spacing.lg },
+  avatarCircle: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing.sm,
+    ...shadows.soft,
   },
-  actionButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 5,
+  avatarText: { color: colors.white, fontSize: 32, fontWeight: '800' },
+  userName: { ...typography.h2, color: colors.white, marginBottom: 8 },
+  verifiedBadge: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: radius.full, borderWidth: 1 },
+  verifiedText: { ...typography.label, fontWeight: '600' },
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    marginHorizontal: spacing.lg,
+    marginBottom: 12,
+    padding: spacing.lg,
+    ...shadows.card,
   },
-  actionText: {
-    color: '#3b82f6',
-    fontWeight: '600',
-    fontSize: 16,
+  dangerCard: { borderWidth: 1.5, borderColor: '#fecaca' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
+  cardTitle: { ...typography.h3, color: colors.text },
+  editBtn: { backgroundColor: '#dbeafe', paddingHorizontal: 14, paddingVertical: 5, borderRadius: radius.full },
+  editBtnText: { color: colors.blue, fontWeight: '700', fontSize: 13 },
+  fieldLabel: { ...typography.label, color: colors.textMuted, marginBottom: 4, textTransform: 'uppercase' },
+  fieldValue: { ...typography.body, color: colors.text, fontWeight: '500', marginBottom: spacing.sm },
+  input: {
+    borderWidth: 1.5, borderColor: colors.primary,
+    borderRadius: radius.md, padding: 12,
+    fontSize: 15, color: colors.text,
+    backgroundColor: '#f0fdf4', marginBottom: spacing.sm,
   },
-  logoutButton: {
-    marginTop: 10,
+  divider: { height: 1, backgroundColor: '#f3f4f6', marginVertical: 12 },
+  editActions: { flexDirection: 'row', marginTop: spacing.sm },
+  actionRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6',
+    gap: 12,
   },
-  logoutText: {
-    color: '#ef4444',
-  },
+  dangerRow: { borderBottomWidth: 0 },
+  actionLabel: { flex: 1, ...typography.body, color: colors.text, fontWeight: '500' },
+  actionChevron: { color: colors.textMuted, fontSize: 22 },
+  dangerLabel: { color: colors.red },
 });
-

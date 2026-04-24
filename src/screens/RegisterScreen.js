@@ -1,135 +1,148 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../config/firebaseConfig';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import Button from '../components/Button';
-import Card from '../components/Card';
+import { colors, typography, spacing, radius, shadows } from '../theme';
 
 export default function RegisterScreen({ navigation }) {
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-    const handleRegister = async () => {
-        if (!name || !email || !password) {
-            Alert.alert('Error', 'Please fill in all fields');
-            return;
-        }
+  const handleRegister = async () => {
+    if (!name || !email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+    setLoading(true);
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(cred.user, { displayName: name });
+    } catch (error) {
+      Alert.alert('Registration Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        if (password.length < 6) {
-            Alert.alert('Error', 'Password should be at least 6 characters');
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            await updateProfile(userCredential.user, {
-                displayName: name
-            });
-            // Navigation will be handled by the auth state listener in RootNavigator
-        } catch (error) {
-            Alert.alert('Registration Error', error.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <View style={styles.container}>
-            <Card>
-                <Text style={styles.title}>Create Account</Text>
-
-                <Text style={styles.label}>Full Name</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Enter your name"
-                    value={name}
-                    onChangeText={setName}
-                />
-
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Enter your email"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                />
-
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Enter your password"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                />
-
-                {loading ? (
-                    <ActivityIndicator size="large" color="#10b981" />
-                ) : (
-                    <Button
-                        title="Register"
-                        onPress={handleRegister}
-                        color="#10b981"
-                    />
-                )}
-
-                <View style={styles.footer}>
-                    <Text style={styles.footerText}>Already have an account? </Text>
-                    <Text
-                        style={styles.link}
-                        onPress={() => navigation.navigate('Login')}
-                    >
-                        Login
-                    </Text>
-                </View>
-            </Card>
+  return (
+    <LinearGradient colors={['#0a1628', '#0d2137', '#0f3d2e']} style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <ScrollView contentContainerStyle={{ justifyContent: 'center', flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <View style={styles.logoCircle}>
+            <Text style={{ fontSize: 32 }}>🥗</Text>
+          </View>
+          <Text style={styles.appName}>FoodRisk</Text>
+          <Text style={styles.tagline}>Create your account</Text>
         </View>
-    );
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Get Started</Text>
+
+          <Text style={styles.label}>Full Name</Text>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputIcon}>👤</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Your full name"
+              placeholderTextColor="#aaa"
+              value={name}
+              onChangeText={setName}
+            />
+          </View>
+
+          <Text style={styles.label}>Email</Text>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputIcon}>📧</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="your@email.com"
+              placeholderTextColor="#aaa"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <Text style={styles.label}>Password</Text>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputIcon}>🔒</Text>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="Min. 6 characters"
+              placeholderTextColor="#aaa"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+              <Text style={{ fontSize: 18 }}>{showPassword ? '🙈' : '👁️'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 20 }} />
+          ) : (
+            <Button title="Create Account" onPress={handleRegister} color={colors.primary} style={{ marginTop: 8 }} />
+          )}
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Already have an account? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.link}>Sign in</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </LinearGradient>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: 'center',
-        padding: 20,
-        backgroundColor: '#ecfdf5',
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 30,
-        color: '#064e3b',
-    },
-    label: {
-        fontSize: 16,
-        marginBottom: 5,
-        color: '#374151',
-    },
-    input: {
-        borderWidth: 1,
-        borderColor: '#d1d5db',
-        borderRadius: 8,
-        padding: 12,
-        fontSize: 16,
-        marginBottom: 20,
-        backgroundColor: '#fff',
-    },
-    footer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        marginTop: 20,
-    },
-    footerText: {
-        color: '#4b5563',
-    },
-    link: {
-        color: '#10b981',
-        fontWeight: 'bold',
-    },
+  container: { flex: 1, paddingHorizontal: spacing.lg },
+  header: { alignItems: 'center', marginBottom: spacing.xl, paddingTop: 60 },
+  logoCircle: {
+    width: 68, height: 68, borderRadius: 34,
+    backgroundColor: 'rgba(16,185,129,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing.sm,
+    borderWidth: 2, borderColor: 'rgba(16,185,129,0.4)',
+  },
+  appName: { ...typography.h1, color: colors.white, marginBottom: 4 },
+  tagline: { ...typography.body, color: colors.textLight },
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+    ...shadows.card,
+  },
+  cardTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.md, textAlign: 'center' },
+  label: { ...typography.label, color: colors.textMuted, marginBottom: 6, marginTop: 12, textTransform: 'uppercase' },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  inputIcon: { fontSize: 16, marginRight: 8 },
+  input: { flex: 1, paddingVertical: 13, fontSize: 15, color: colors.text },
+  eyeBtn: { padding: 4 },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.md },
+  footerText: { color: colors.textMuted, fontSize: 14 },
+  link: { color: colors.primary, fontWeight: '700', fontSize: 14 },
 });

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createDrawerNavigator } from '@react-navigation/drawer';
+import { createDrawerNavigator, DrawerContentScrollView } from '@react-navigation/drawer';
 import { auth } from '../config/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 import WelcomeScreen from '../screens/WelcomeScreen';
 import ScannerScreen from '../screens/ScannerScreen';
@@ -40,12 +40,46 @@ function MainStack() {
   );
 }
 
+function CustomDrawerContent(props) {
+  return (
+    <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1, paddingTop: 40 }}>
+      <View style={{ paddingHorizontal: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', marginBottom: 10 }}>
+        <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }}>FoodRisk</Text>
+      </View>
+      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Main')}>
+        <Text style={styles.drawerText}>🏠 Dashboard</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Home')}>
+        <Text style={styles.drawerText}>🕒 History</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Profile')}>
+        <Text style={styles.drawerText}>👤 Account</Text>
+      </TouchableOpacity>
+      
+      <View style={{ flex: 1 }} />
+      
+      <TouchableOpacity 
+        style={[styles.drawerItem, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 20, marginBottom: 40 }]} 
+        onPress={() => signOut(auth)}
+      >
+        <Text style={[styles.drawerText, { color: '#ef4444' }]}>🚪 Log Out</Text>
+      </TouchableOpacity>
+    </DrawerContentScrollView>
+  );
+}
+
 function AppNavigator() {
   return (
     <Drawer.Navigator
+      drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
-        headerShown: true,
+        headerShown: false,
         drawerType: 'slide',
+        drawerStyle: { backgroundColor: '#0d2137', width: 260 },
+        drawerLabelStyle: { color: '#ffffff', fontWeight: '600', fontSize: 15 },
+        drawerActiveBackgroundColor: 'rgba(16,185,129,0.2)',
+        drawerActiveTintColor: '#10b981',
+        drawerInactiveTintColor: 'rgba(255,255,255,0.6)',
       }}
     >
       <Drawer.Screen name="Main" component={MainStack} />
@@ -69,7 +103,7 @@ export default function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0a1628' }}>
         <ActivityIndicator size="large" color="#10b981" />
       </View>
     );
@@ -77,3 +111,16 @@ export default function RootNavigator() {
 
   return user ? <AppNavigator /> : <AuthNavigator />;
 }
+
+const styles = StyleSheet.create({
+  drawerItem: {
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    marginBottom: 5,
+  },
+  drawerText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  }
+});
