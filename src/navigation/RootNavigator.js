@@ -55,11 +55,11 @@ function CustomDrawerContent(props) {
       <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Profile')}>
         <Text style={styles.drawerText}>👤 Account</Text>
       </TouchableOpacity>
-      
+
       <View style={{ flex: 1 }} />
-      
-      <TouchableOpacity 
-        style={[styles.drawerItem, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 20, marginBottom: 40 }]} 
+
+      <TouchableOpacity
+        style={[styles.drawerItem, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 20, marginBottom: 40 }]}
         onPress={() => signOut(auth)}
       >
         <Text style={[styles.drawerText, { color: '#ef4444' }]}>🚪 Log Out</Text>

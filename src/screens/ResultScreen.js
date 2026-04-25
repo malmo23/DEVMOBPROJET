@@ -110,17 +110,22 @@ export default function ResultScreen({ route, navigation }) {
 
         {/* Disease Predictions */}
         <View style={styles.section}>
-          <View style={[styles.sectionHeader, { borderLeftColor: colors.redDark || '#991b1b' }]}>
-            <Text style={styles.sectionTitle}>🔮 Long-term Predictions</Text>
+          <View style={[styles.sectionHeader, { borderLeftColor: '#4c1d95', backgroundColor: '#f5f3ff' }]}>
+            <Text style={[styles.sectionTitle, { color: '#4c1d95' }]}>🔮 AI Disease Predictions</Text>
           </View>
-          <View style={[styles.sectionBody, { backgroundColor: '#fff1f2' }]}>
-            <Text style={styles.predictionIntro}>
-              Risk of these conditions if consumed regularly over a long period:
-            </Text>
-            {result.diseasePredictions?.map((p, i) => (
-              <View key={i} style={styles.riskRow}>
-                <View style={[styles.riskDot, { backgroundColor: colors.redDark || '#991b1b' }]} />
-                <CopyableText style={[styles.riskText, { color: '#991b1b' }]}>{p}</CopyableText>
+          <View style={[styles.sectionBody, { backgroundColor: '#1e1b4b', padding: 0, overflow: 'hidden' }]}>
+            <Text style={styles.predictionIntro}>Based on long-term consumption patterns:</Text>
+            {result.predictions?.map((p, i) => (
+              <View key={i} style={styles.predictionCard}>
+                <View style={styles.predictionHeader}>
+                  <Text style={styles.diseaseName}>{p.disease}</Text>
+                  <View style={[styles.probBadge, { 
+                    backgroundColor: p.probability === 'High' ? '#ef4444' : p.probability === 'Moderate' ? '#f59e0b' : '#10b981' 
+                  }]}>
+                    <Text style={styles.probText}>{p.probability}</Text>
+                  </View>
+                </View>
+                <Text style={styles.diseaseDesc}>{p.description}</Text>
               </View>
             ))}
           </View>
@@ -232,10 +237,43 @@ const styles = StyleSheet.create({
   },
   riskText: { flex: 1, color: '#ea580c', fontSize: 14, lineHeight: 20 },
   predictionIntro: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginBottom: 10,
+    padding: 12,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
     fontStyle: 'italic',
+    backgroundColor: 'rgba(0,0,0,0.2)'
+  },
+  predictionCard: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  predictionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  diseaseName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ddd6fe',
+  },
+  probBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  probText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  diseaseDesc: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 18,
   },
   actions: {
     flexDirection: 'row', paddingHorizontal: spacing.lg, marginTop: spacing.md,
