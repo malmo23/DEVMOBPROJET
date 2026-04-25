@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, TextInput, StyleSheet, Text, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import Button from './Button';
+import { colors, typography, spacing, radius, shadows } from '../theme';
 
 export default function ScannerView({ onScan }) {
   const [barcode, setBarcode] = useState('');
@@ -25,36 +26,53 @@ export default function ScannerView({ onScan }) {
         style={styles.container}
         scrollEnabled={true}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.content}>
-          <Text style={styles.title}>📱 Scan/Enter Barcode</Text>
-          
           <View style={styles.infoBox}>
             <Text style={styles.infoText}>
-              📷 <Text style={{ fontWeight: 'bold' }}>Note:</Text> For live QR scanning, build a custom Expo app. Expo Go doesn't support native barcode scanning.
+              <Text style={{ fontWeight: 'bold', color: colors.primary }}>Note:</Text> For live camera scanning, build a custom Expo app. Expo Go doesn't support native barcode scanning. Use the entry below for testing.
             </Text>
           </View>
 
-          <Text style={styles.label}>Enter Product Barcode:</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter product barcode..."
-            value={barcode}
-            onChangeText={setBarcode}
-            keyboardType="number-pad"
-            placeholderTextColor="#999"
-          />
+          <View style={styles.inputCard}>
+            <Text style={styles.label}>ENTER PRODUCT BARCODE</Text>
+            <View style={styles.inputWrapper}>
+              <Text style={{ fontSize: 18, marginRight: 10 }}>🔢</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., 3017620422003"
+                value={barcode}
+                onChangeText={setBarcode}
+                keyboardType="number-pad"
+                placeholderTextColor="#94a3b8"
+                onSubmitEditing={handleScan}
+              />
+            </View>
 
-          <Button 
-            title="Analyze Product" 
-            onPress={handleScan}
-            color="#10b981"
-          />
+            <Button 
+              title="Analyze Product" 
+              onPress={handleScan}
+              color={colors.primary}
+            />
+          </View>
 
           <View style={styles.testCodesBox}>
-            <Text style={styles.testCodesTitle}>Test Codes:</Text>
-            <Text style={styles.testCode}>🥜 3017620422003 - Nutella</Text>
-            <Text style={styles.testCode}>🥤 5449000000996 - Coca-Cola</Text>
+            <Text style={styles.testCodesTitle}>POPULAR TEST CODES</Text>
+            <View style={styles.testCodeRow}>
+              <Text style={styles.testCodeIcon}>🍫</Text>
+              <View>
+                <Text style={styles.testCodeLabel}>3017620422003</Text>
+                <Text style={styles.testCodeSub}>Nutella 400g</Text>
+              </View>
+            </View>
+            <View style={styles.testCodeRow}>
+              <Text style={styles.testCodeIcon}>🥤</Text>
+              <View>
+                <Text style={styles.testCodeLabel}>5449000000996</Text>
+                <Text style={styles.testCodeSub}>Coca-Cola</Text>
+              </View>
+            </View>
           </View>
 
           <View style={styles.spacer} />
@@ -67,68 +85,88 @@ export default function ScannerView({ onScan }) {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#ecfdf5',
   },
   content: {
-    padding: 20,
+    padding: spacing.lg,
     paddingBottom: 40,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: '#1f2937',
-  },
   infoBox: {
-    backgroundColor: '#dbeafe',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#3b82f6',
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    borderRadius: radius.lg,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.2)',
   },
   infoText: {
     fontSize: 13,
-    color: '#1e40af',
-    lineHeight: 18,
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  inputCard: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    ...shadows.card,
+    marginBottom: 24,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 10,
+    ...typography.label,
+    color: '#64748b',
+    marginBottom: 12,
+    letterSpacing: 1,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 14,
+    marginBottom: spacing.md,
   },
   input: {
-    borderWidth: 2,
-    borderColor: '#10b981',
-    borderRadius: 12,
-    padding: 14,
+    flex: 1,
+    paddingVertical: 14,
     fontSize: 16,
-    marginBottom: 18,
-    backgroundColor: '#f0fdf4',
-    color: '#1f2937',
+    color: colors.text,
+    fontWeight: '600',
   },
   testCodesBox: {
-    backgroundColor: '#fef3c7',
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 18,
-    borderLeftWidth: 4,
-    borderLeftColor: '#f59e0b',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: radius.xl,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   testCodesTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#92400e',
-    marginBottom: 8,
+    ...typography.label,
+    color: 'rgba(255,255,255,0.4)',
+    marginBottom: 15,
+    letterSpacing: 1.5,
   },
-  testCode: {
+  testCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  testCodeIcon: {
+    fontSize: 24,
+    marginRight: 15,
+  },
+  testCodeLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  testCodeSub: {
     fontSize: 12,
-    color: '#92400e',
-    marginVertical: 4,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 2,
   },
   spacer: {
-    height: 20,
+    height: 40,
   },
 });
