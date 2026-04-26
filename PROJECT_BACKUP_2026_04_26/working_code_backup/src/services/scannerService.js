@@ -46,8 +46,8 @@ const localDb = {
 };
 
 const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 FoodRisk-App/1.0',
-  'Accept': 'application/json'
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Content-Type': 'application/json'
 };
 
 // Gemini Prediction Logic
@@ -55,16 +55,12 @@ const getGeminiPrediction = async (productName, nutrition, ingredients) => {
   if (!genAI) return null;
 
   try {
-    const { getHealthConditions } = require('../../database/sqlite');
-    const healthProfile = await getHealthConditions();
-
+    // Using gemini-2.0-flash which is the stable standard
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const prompt = `
       Analyze this food product: "${productName}"
       Nutrition (per 100g): ${JSON.stringify(nutrition)}
       Ingredients: ${ingredients}
-      
-      ${healthProfile ? `USER HEALTH PROFILE: ${healthProfile}. IMPORTANT: Prioritize identifying risks and providing warnings specifically related to these conditions.` : ""}
 
       1. Predict 3-4 specific long-term health risks/diseases associated with chronic consumption.
       2. Identify all potential allergens/allergies present in the ingredients.
@@ -166,71 +162,55 @@ export const analyzeProductByName = async (productName) => {
   }
 };
 
-export const searchProducts = async (rawProductName) => {
-  const productName = rawProductName?.trim() || '';
-  if (productName.length < 2) return [];
-  
-  const subdomains = ['world', 'fr']; // Reduced to avoid long waits
+export const searchProducts = async (productName) => {
+  const subdomains = ['world', 'fr', 'en', 'us'];
   let lastError = null;
 
   for (const sub of subdomains) {
     try {
-      console.log(`🔍 Searching (${sub}) for: "${productName}"...`);
+      console.log(`🔍 Searching (${sub})...`);
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-      // Using search_terms with simple mode for broadest matching
       const searchUrl = `https://${sub}.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&search_simple=1&action=process&json=1&page_size=10`;
 
-      const response = await fetch(searchUrl, { 
-        signal: controller.signal, 
-        headers: HEADERS 
-      });
+      const response = await fetch(searchUrl, { signal: controller.signal, headers: HEADERS });
       
-      clearTimeout(timeoutId);
-
       if (response.ok) {
         const data = await response.json();
-        
-        if (data.products && data.products.length > 0) {
-          console.log(`✅ Found ${data.products.length} matches on ${sub}`);
-          
-          const processedResults = [];
-          for (const p of data.products.slice(0, 10)) {
-            try {
-              const formatted = await formatProductData(p, productName, true);
-              processedResults.push(formatted);
-            } catch (err) {
-              console.log('⚠️ Formatting error:', err.message);
-            }
-          }
-          return processedResults;
+        if (!data.products || data.products.length === 0) {
+          console.log(`⚠️ No results on ${sub}, trying next...`);
+          clearTimeout(timeoutId);
+          continue;
         }
-        console.log(`⚠️ No direct matches on ${sub}`);
+
+        console.log(`✅ Results found on ${sub}: ${data.products.length}`);
+        
+        // Process results sequentially to avoid hitting free-tier rate limits
+        const processedResults = [];
+        for (const p of data.products.slice(0, 10)) { // Limit to top 10 for speed
+          try {
+            const formatted = await formatProductData(p, productName);
+            processedResults.push(formatted);
+            // Larger delay to respect Gemini free-tier rate limits
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          } catch (err) {
+            console.log('⚠️ Error formatting product:', err.message);
+          }
+        }
+        
+        return processedResults;
       } else {
-        console.log(`⚠️ Subdomain ${sub} responded with status: ${response.status}`);
+        console.log(`⚠️ Subdomain ${sub} failed: ${response.status}`);
       }
+      clearTimeout(timeoutId);
     } catch (error) {
       lastError = error.message;
-      console.log(`⚠️ ${sub} search error:`, error.message);
+      console.log(`⚠️ ${sub} error:`, error.message);
     }
   }
 
-  // AI FALLBACK: If API returns nothing, use Gemini to "predict" the most likely product
-  console.log('✨ Triggering AI Smart Search fallback for:', productName);
-  try {
-    const aiSuggestion = await generateAIAnalysis(productName, null);
-    if (aiSuggestion) {
-      return [{
-        ...aiSuggestion,
-        product: `${productName} (AI Estimate)`,
-        source: 'Gemini AI Prediction'
-      }];
-    }
-  } catch (aiErr) {
-    console.log('❌ AI Fallback failed:', aiErr.message);
-  }
-
+  console.log('❌ All search attempts failed:', lastError);
   return [];
 };
 
@@ -256,7 +236,7 @@ const generateHeuristicPredictions = (product, nutrition) => {
   return predictions;
 };
 
-const formatProductData = async (product, searchTerm, skipAI = false) => {
+const formatProductData = async (product, searchTerm) => {
   const name = product.product_name || searchTerm;
   const score = product.nutriscore_grade ? scoreToNumber(product.nutriscore_grade) : calculateScore(product);
 
@@ -272,10 +252,7 @@ const formatProductData = async (product, searchTerm, skipAI = false) => {
   };
 
   // 🤖 Dynamic AI Analysis for both Predictions AND Allergies
-  let aiResult = null;
-  if (!skipAI) {
-    aiResult = await getGeminiPrediction(name, nutritionInfo, ingredientsText);
-  }
+  const aiResult = await getGeminiPrediction(name, nutritionInfo, ingredientsText);
   
   // Use AI results if available, otherwise fallback
   const predictions = aiResult?.predictions || generateHeuristicPredictions(product, nutritionInfo);
@@ -319,34 +296,31 @@ const calculateScore = (product) => {
   return Math.max(10, score);
 };
 
-export const generateAIAnalysis = async (rawProductName, productData) => {
-  const productName = rawProductName?.trim() || 'Unknown Product';
+export const generateAIAnalysis = async (productName, productData) => {
   const lower = productName.toLowerCase();
 
-  // Attempt Gemini prediction for manual entry or enriched product data
-  const nutritionPlaceholder = productData?.nutritionInfo || { calories: 'N/A', protein: 'N/A', carbs: 'N/A', fat: 'N/A', sugar: 'N/A', salt: 'N/A' };
-  const ingredientsText = productData?.ingredients || "Manual search entry";
-  const aiResult = await getGeminiPrediction(productName, nutritionPlaceholder, ingredientsText);
+  // Attempt Gemini prediction for manual entry
+  const nutritionPlaceholder = { calories: 'N/A', protein: 'N/A', carbs: 'N/A', fat: 'N/A', sugar: 'N/A', salt: 'N/A' };
+  const aiResult = await getGeminiPrediction(productName, nutritionPlaceholder, "Manual search entry");
 
   let predictions = aiResult?.predictions;
-  let allergies = aiResult?.allergies || productData?.allergies || [];
+  let allergies = aiResult?.allergies || [];
 
   if (!predictions) {
     // Basic fallback logic
-    predictions = productData?.predictions || [{ disease: 'General Risk', probability: 'Moderate', description: 'Inconclusive data, consume in moderation.' }];
+    predictions = [{ disease: 'General Risk', probability: 'Moderate', description: 'Inconclusive data, consume in moderation.' }];
     if (lower.includes('soda')) predictions = [{ disease: 'Type 2 Diabetes', probability: 'High', description: 'Continuous exposure to liquid sugars.' }];
   }
 
   return {
     product: productName,
-    score: productData?.score || 50,
+    score: 50,
     allergies,
     nutritionInfo: nutritionPlaceholder,
     predictions,
-    brands: productData?.brands || 'Unknown',
-    ingredients: ingredientsText,
-    source: aiResult ? 'Gemini AI Analysis' : (productData ? productData.source : 'AI Analysis'),
-    imageUrl: productData?.imageUrl || null
+    ingredients: 'Not available (AI estimation)',
+    source: 'AI Analysis',
+    imageUrl: null
   };
 };
 

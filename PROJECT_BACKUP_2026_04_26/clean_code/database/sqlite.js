@@ -38,39 +38,10 @@ export const initDB = async () => {
         notes TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      );
     `);
     console.log('✅ Database initialized');
   } catch (error) {
     console.error('❌ Database error:', error);
-  }
-};
-
-export const saveHealthConditions = async (conditions) => {
-  if (isWeb) {
-    localStorage.setItem('health_conditions', conditions);
-    return;
-  }
-  try {
-    await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);', ['health_conditions', conditions]);
-  } catch (error) {
-    console.error('❌ Error saving conditions:', error);
-  }
-};
-
-export const getHealthConditions = async () => {
-  if (isWeb) {
-    return localStorage.getItem('health_conditions') || '';
-  }
-  try {
-    const row = await db.getFirstAsync('SELECT value FROM settings WHERE key = ?;', ['health_conditions']);
-    return row ? row.value : '';
-  } catch (error) {
-    console.error('❌ Error getting conditions:', error);
-    return '';
   }
 };
 

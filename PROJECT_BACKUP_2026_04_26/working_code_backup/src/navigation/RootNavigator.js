@@ -94,10 +94,6 @@ export default function RootNavigator() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize Database
-    const { initDB } = require('../../database/sqlite');
-    initDB();
-
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setLoading(false);

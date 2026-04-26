@@ -24,9 +24,6 @@ export default function ProfileScreen({ navigation }) {
   const [email, setEmail] = useState(user?.email || '');
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [healthConditions, setHealthConditions] = useState('');
-  const [newCondition, setNewCondition] = useState('');
-  const [isEditingHealth, setIsEditingHealth] = useState(false);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
@@ -35,47 +32,8 @@ export default function ProfileScreen({ navigation }) {
         if (!isEditing) { setName(u.displayName || ''); setEmail(u.email || ''); }
       }
     });
-    
-    // Load health conditions
-    const loadHealth = async () => {
-      const { getHealthConditions } = require('../../database/sqlite');
-      const conditions = await getHealthConditions();
-      setHealthConditions(conditions);
-    };
-    loadHealth();
-
     return unsub;
   }, [isEditing]);
-
-  const handleSaveHealth = async () => {
-    setLoading(true);
-    try {
-      const { saveHealthConditions } = require('../../database/sqlite');
-      await saveHealthConditions(healthConditions);
-      Alert.alert('Success', 'Health profile updated!');
-      setIsEditingHealth(false);
-    } catch (e) {
-      Alert.alert('Error', 'Failed to save health profile');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddCondition = () => {
-    if (!newCondition.trim()) return;
-    const currentList = healthConditions ? healthConditions.split(',').map(s => s.trim()).filter(Boolean) : [];
-    if (!currentList.some(c => c.toLowerCase() === newCondition.trim().toLowerCase())) {
-      const updated = [...currentList, newCondition.trim()].join(', ');
-      setHealthConditions(updated);
-    }
-    setNewCondition('');
-  };
-
-  const handleRemoveCondition = (index) => {
-    const currentList = healthConditions.split(',').map(s => s.trim()).filter(Boolean);
-    currentList.splice(index, 1);
-    setHealthConditions(currentList.join(', '));
-  };
 
   const initials = (user?.displayName || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
@@ -189,61 +147,6 @@ export default function ProfileScreen({ navigation }) {
           ) : null}
         </View>
 
-        {/* Health Profile Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>🧬 Health Profile</Text>
-            {!isEditingHealth && (
-              <TouchableOpacity onPress={() => setIsEditingHealth(true)} style={styles.editBtn}>
-                <Text style={styles.editBtnText}>Edit</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <Text style={styles.fieldLabel}>MY HEALTH CONDITIONS & ALLERGIES</Text>
-          
-          <View style={styles.chipsContainer}>
-            {(healthConditions ? healthConditions.split(',').map(s => s.trim()).filter(Boolean) : []).map((condition, index) => (
-              <View key={index} style={styles.healthChip}>
-                <Text style={styles.healthChipText}>{condition}</Text>
-                {isEditingHealth && (
-                  <TouchableOpacity onPress={() => handleRemoveCondition(index)} style={styles.removeChip}>
-                    <Text style={styles.removeChipText}>✕</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
-            {!isEditingHealth && !healthConditions && (
-              <Text style={styles.fieldValue}>No conditions set</Text>
-            )}
-          </View>
-
-          {isEditingHealth && (
-            <View style={styles.addConditionContainer}>
-              <TextInput
-                style={styles.addInput}
-                value={newCondition}
-                onChangeText={setNewCondition}
-                placeholder="Add condition or allergy..."
-                placeholderTextColor="#94a3b8"
-                onSubmitEditing={handleAddCondition}
-              />
-              <TouchableOpacity onPress={handleAddCondition} style={styles.addConditionBtn}>
-                <Text style={styles.addConditionBtnText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <Text style={styles.helperText}>AI uses these to provide personalized risk warnings.</Text>
-
-          {isEditingHealth && (
-            <View style={styles.editActions}>
-              <Button title="Save Profile" onPress={handleSaveHealth} color={colors.primary} style={{ flex: 1, marginRight: 6 }} />
-              <Button title="Cancel" onPress={() => setIsEditingHealth(false)} color={colors.textMuted} style={{ flex: 1, marginLeft: 6 }} />
-            </View>
-          )}
-        </View>
-
         {/* Security Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Security</Text>
@@ -312,7 +215,6 @@ const styles = StyleSheet.create({
     fontSize: 15, color: colors.text,
     backgroundColor: '#f0fdf4', marginBottom: spacing.sm,
   },
-  helperText: { ...typography.label, color: colors.primary, marginBottom: spacing.md, opacity: 0.8 },
   divider: { height: 1, backgroundColor: '#f3f4f6', marginVertical: 12 },
   editActions: { flexDirection: 'row', marginTop: spacing.sm },
   actionRow: {
@@ -324,70 +226,4 @@ const styles = StyleSheet.create({
   actionLabel: { flex: 1, ...typography.body, color: colors.text, fontWeight: '500' },
   actionChevron: { color: colors.textMuted, fontSize: 22 },
   dangerLabel: { color: colors.red },
-  chipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  healthChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ecfdf5',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  healthChipText: {
-    color: '#065f46',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  removeChip: {
-    marginLeft: 8,
-    backgroundColor: 'rgba(6, 95, 70, 0.1)',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  removeChipText: {
-    color: '#065f46',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  addConditionContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  addInput: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1.5,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: colors.text,
-  },
-  addConditionBtn: {
-    marginLeft: 10,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  addConditionBtnText: {
-    color: colors.white,
-    fontWeight: '700',
-    fontSize: 14,
-  },
 });

@@ -14,17 +14,20 @@ export default function ProductSearchScreen({ navigation }) {
   const [hasSearched, setHasSearched] = useState(false);
 
   const handleSearch = async (name = productName) => {
-    const query = (name || productName).trim();
-    if (query.length < 2) {
+    const query = name || productName;
+    if (!query.trim()) {
       alert('Please enter a product name');
       return;
     }
     setLoading(true);
-    setHasSearched(false);
+    setHasSearched(false); // Reset to ensure loading UI shows correctly
     setResults([]); 
     Keyboard.dismiss();
     
     try {
+      // Add artificial delay for "deep AI processing" feel
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      
       const data = await searchProducts(query);
       console.log('Results received:', data.length);
       setResults(data);
@@ -37,20 +40,8 @@ export default function ProductSearchScreen({ navigation }) {
     }
   };
 
-  const selectProduct = async (item) => {
-    if (item.source === 'Gemini AI Analysis') {
-      navigation.replace('Result', { result: item });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const enrichedResult = await generateAIAnalysis(item.product, item);
-      navigation.replace('Result', { result: enrichedResult });
-    } catch (err) {
-      console.log('Error enriching with AI', err);
-      navigation.replace('Result', { result: item });
-    }
+  const selectProduct = (item) => {
+    navigation.replace('Result', { result: item });
   };
 
   const handleAIFallback = () => {
