@@ -3,7 +3,8 @@ const localDb = {
     product: "Nutella 400g", 
     score: 38, 
     allergens: ["Hazelnuts", "Milk", "Soy"], 
-    diseasePredictions: ["Type 2 Diabetes (Chronic sugar exposure)", "Hyperlipidemia (High Cholesterol)", "Obesity-related complications"],
+    risks: ["High sugar content (56.3g)", "High fat content (30.9g)", "Contains palm oil"],
+    cancerRisk: "Low (high sugar may increase risk indirectly)",
     imageUrl: "https://images.openfoodfacts.org/images/products/301/762/042/2003/front_fr.581.400.jpg",
     nutritionInfo: {
       calories: 539,
@@ -20,7 +21,8 @@ const localDb = {
     product: "Coca-Cola", 
     score: 12, 
     allergens: [], 
-    diseasePredictions: ["Metabolic Syndrome", "Insulin Resistance", "Chronic Dental Erosion", "Increased Kidney Strain"],
+    risks: ["Very high sugar content (10.6g)", "Phosphoric acid", "Caramel E150d"],
+    cancerRisk: "Low (high sugar content)",
     imageUrl: "https://images.openfoodfacts.org/images/products/544/900/000/0996/front_fr.661.400.jpg",
     nutritionInfo: {
       calories: 42,
@@ -35,10 +37,17 @@ const localDb = {
   },
 };
 
+const HEADERS = {
+  'User-Agent': 'FoodRisk-App/1.0 (Android; contact: support@foodrisk.app)'
+};
+
 // Fast barcode analysis
 export const analyzeBarcode = async (barcode) => {
+  console.log('🔍 Analyzing barcode:', barcode);
+  
   // Check local database first for instant results
   if (localDb[barcode]) {
+    console.log('✅ Found in local database');
     return localDb[barcode];
   }
 
@@ -48,7 +57,10 @@ export const analyzeBarcode = async (barcode) => {
 
     const response = await fetch(
       `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`,
-      { signal: controller.signal }
+      { 
+        signal: controller.signal,
+        headers: HEADERS
+      }
     );
 
     clearTimeout(timeoutId);
@@ -56,17 +68,24 @@ export const analyzeBarcode = async (barcode) => {
     if (!response.ok) throw new Error('API request failed');
 
     const data = await response.json();
+    console.log('📦 API Data Status:', data.status);
 
     if (data.status === 1 && data.product) {
+      console.log('✅ Product found in API:', data.product.product_name || barcode);
       return formatProductData(data.product, barcode);
     }
 
+    console.log('⚠️ Product not found in API, using fallback');
     // Fallback for unknown products
     return { 
       product: `Unknown Product (${barcode})`, 
       score: 50, 
       allergens: [], 
-      diseasePredictions: ["No long-term data found for this barcode"], 
+      predictions: [{
+        disease: 'Unknown Risk',
+        probability: 'N/A',
+        description: 'No data found for this barcode.'
+      }],
       nutritionInfo: { calories: 'N/A', protein: 'N/A', carbs: 'N/A', fat: 'N/A', sugar: 'N/A', salt: 'N/A' },
       ingredients: 'Not available',
       source: 'Unknown Product',
@@ -78,7 +97,11 @@ export const analyzeBarcode = async (barcode) => {
       product: "Connection Error", 
       score: 50, 
       allergens: [], 
-      diseasePredictions: ["Long-term data unavailable due to connection error"], 
+      predictions: [{
+        disease: 'Offline',
+        probability: 'N/A',
+        description: 'Check your internet connection.'
+      }],
       imageUrl: null,
       source: 'Offline Fallback'
     };
@@ -90,67 +113,123 @@ export const analyzeProductByName = async (productName) => {
   console.log('🔍 Searching for product:', productName);
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-    const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&json=1&page_size=5`;
-    const response = await fetch(searchUrl, { signal: controller.signal });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) throw new Error('API request failed');
-
-    const data = await response.json();
-
-    if (!data.products || data.products.length === 0) {
-      return generateAIAnalysis(productName, null);
+    const results = await searchProducts(productName);
+    if (results && results.length > 0) {
+      return results[0]; // Default to first result for direct analysis
     }
-
-    return formatProductData(data.products[0], productName);
+    return generateAIAnalysis(productName, null);
   } catch (error) {
     console.log('Product search error:', error.message);
     return generateAIAnalysis(productName, null);
   }
 };
 
-const predictDiseases = (product, nutrition) => {
+export const searchProducts = async (productName) => {
+  console.log('📡 Fetching suggestions for:', productName);
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    // Improved search URL: removed search_simple=1, added sorting by popularity
+    const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&action=process&json=1&page_size=20&sort_by=unique_scans_n`;
+    
+    let response = await fetch(searchUrl, { signal: controller.signal, headers: HEADERS });
+    
+    if (!response.ok) throw new Error('API request failed');
+
+    let data = await response.json();
+    
+    // Fallback: If no products found, try a broader search or search by brand
+    if (!data.products || data.products.length === 0) {
+      console.log('🔄 No products found, trying fallback search...');
+      const fallbackUrl = `https://world.openfoodfacts.org/cgi/search.pl?brands_tags=${encodeURIComponent(productName)}&action=process&json=1&page_size=10`;
+      response = await fetch(fallbackUrl, { signal: controller.signal, headers: HEADERS });
+      if (response.ok) {
+        data = await response.json();
+      }
+    }
+
+    clearTimeout(timeoutId);
+
+    if (!data.products || data.products.length === 0) {
+      return [];
+    }
+
+    return data.products.map(p => formatProductData(p, productName));
+  } catch (error) {
+    console.log('Search error:', error.message);
+    return [];
+  }
+};
+
+const generateDiseasePredictions = (product, nutrition) => {
   const predictions = [];
   const sugar = parseFloat(nutrition.sugar);
   const salt = parseFloat(nutrition.salt);
   const fat = parseFloat(nutrition.fat);
-  const ingredients = (product.ingredients_text || '').toLowerCase();
-  const additives = product.additives_tags || [];
-
-  if (!isNaN(sugar) && sugar > 15) {
-    predictions.push("Type 2 Diabetes (Chronic exposure to high sugar)");
-    predictions.push("Metabolic Syndrome & Insulin Resistance");
-    predictions.push("Non-alcoholic Fatty Liver Disease");
-  }
-
-  if (!isNaN(salt) && salt > 1.2) {
-    predictions.push("Hypertension (Chronic High Blood Pressure)");
-    predictions.push("Cardiovascular Heart Disease");
-  }
-
-  if (!isNaN(fat) && fat > 20) {
-    predictions.push("Hyperlipidemia (High Cholesterol)");
-    predictions.push("Coronary Artery Disease");
-  }
-
-  if (ingredients.includes('nitrite') || ingredients.includes('nitrate')) {
-    predictions.push("Colorectal Cancer risk (linked to nitrates)");
-  }
+  const ingredients = (product.ingredients_text_en || product.ingredients_text || '').toLowerCase();
   
-  if (ingredients.includes('palm oil')) {
-    predictions.push("Increased Risk of Atherosclerosis");
+  // Diabetes Prediction
+  if (!isNaN(sugar) && sugar > 18) {
+    predictions.push({
+      disease: 'Type 2 Diabetes',
+      probability: 'High',
+      description: 'Long-term consumption of such high sugar levels (18g+) is a primary driver of insulin resistance.'
+    });
+  } else if (!isNaN(sugar) && sugar > 8) {
+    predictions.push({
+      disease: 'Type 2 Diabetes',
+      probability: 'Moderate',
+      description: 'Frequent intake contributes to chronic blood sugar elevation.'
+    });
   }
 
-  if (additives.length > 5) {
-    predictions.push("Chronic Systemic Inflammation");
+  // Obesity / Fatness
+  if (!isNaN(fat) && fat > 25) {
+    predictions.push({
+      disease: 'Obesity & Metabolic Syndrome',
+      probability: 'High',
+      description: 'High lipid density promotes rapid fat storage and metabolic dysfunction.'
+    });
+  } else if (nutrition.calories > 350) {
+    predictions.push({
+      disease: 'Obesity',
+      probability: 'Moderate',
+      description: 'High calorie density contributes to long-term weight gain.'
+    });
+  }
+
+  // Cancer Prediction
+  const additives = product.additives_tags || [];
+  if (ingredients.includes('nitrite') || ingredients.includes('nitrate') || additives.some(a => a.includes('e250') || a.includes('e251'))) {
+    predictions.push({
+      disease: 'Colorectal Cancer',
+      probability: 'Moderate-High',
+      description: 'Processed preservatives identified are classified as Group 1 carcinogens by IARC.'
+    });
+  } else if (additives.length > 6 || ingredients.includes('artificial color')) {
+    predictions.push({
+      disease: 'Systemic Inflammation',
+      probability: 'Moderate',
+      description: 'High additive count is linked to chronic inflammation, a precursor to various cancers.'
+    });
+  }
+
+  // Hypertension
+  if (!isNaN(salt) && salt > 1.3) {
+    predictions.push({
+      disease: 'Hypertension',
+      probability: 'High',
+      description: 'Extreme sodium levels cause persistent vascular strain and high blood pressure.'
+    });
   }
 
   if (predictions.length === 0) {
-    predictions.push("Low risk for chronic diseases with balanced use");
+    predictions.push({
+      disease: 'Low Chronic Risk',
+      probability: 'Very Low',
+      description: 'No significant disease markers found for long-term consumption.'
+    });
   }
 
   return predictions;
@@ -160,7 +239,9 @@ const formatProductData = (product, searchTerm) => {
   const name = product.product_name || searchTerm;
   const score = product.nutriscore_grade ? scoreToNumber(product.nutriscore_grade) : calculateScore(product);
 
-  const allergens = product.allergens_tags ? product.allergens_tags.map(a => a.replace('en:', '').toUpperCase()) : [];
+  const allergens = Array.isArray(product.allergens_tags) 
+    ? product.allergens_tags.map(a => typeof a === 'string' ? a.replace('en:', '').toUpperCase() : String(a)) 
+    : [];
 
   const nutritionInfo = {
     calories: product.nutriments?.['energy-kcal_100g'] || product.nutriments?.['energy-kcal'] || 'N/A',
@@ -171,17 +252,20 @@ const formatProductData = (product, searchTerm) => {
     salt: product.nutriments?.['salt_100g'] || 'N/A',
   };
 
-  return {
+  const formatted = {
     product: name,
     score,
     allergens,
     nutritionInfo,
-    diseasePredictions: predictDiseases(product, nutritionInfo),
+    predictions: generateDiseasePredictions(product, nutritionInfo),
     brands: product.brands || 'Unknown',
     ingredients: product.ingredients_text_en || product.ingredients_text || 'Not available',
     source: 'Open Food Facts Database',
     imageUrl: product.image_url || product.image_front_url || null
   };
+  
+  console.log('✨ Formatted Result:', formatted.product, 'Score:', formatted.score);
+  return formatted;
 };
 
 const scoreToNumber = (grade) => {
@@ -198,30 +282,40 @@ const calculateScore = (product) => {
   return Math.max(10, score);
 };
 
-const generateAIAnalysis = (productName, productData) => {
+export const generateAIAnalysis = (productName, productData) => {
   const lower = productName.toLowerCase();
   let score = 50;
-  const diseasePredictions = [];
+  const predictions = [];
+  const allergens = [];
 
   if (lower.includes('soda') || lower.includes('cola')) {
     score = 20;
-    diseasePredictions.push('Type 2 Diabetes', 'Metabolic Syndrome', 'Dental Caries');
+    predictions.push(
+      { disease: 'Type 2 Diabetes', probability: 'High', description: 'Continuous exposure to liquid sugars.' },
+      { disease: 'Obesity', probability: 'High', description: 'Empty calories and insulin spikes.' }
+    );
   } else if (lower.includes('candy') || lower.includes('chocolate')) {
     score = 35;
-    diseasePredictions.push('Obesity', 'Insulin Resistance');
+    predictions.push(
+      { disease: 'Diabetes', probability: 'High', description: 'High glycemic index ingredients.' },
+      { disease: 'Dental Decay', probability: 'Extreme', description: 'Bacterial fermentation of sugars.' }
+    );
   } else if (lower.includes('vegetable') || lower.includes('fruit')) {
     score = 85;
-    diseasePredictions.push('Low risk for chronic diseases');
+    predictions.push({ disease: 'Longevity Boost', probability: 'High', description: 'Rich in antioxidants and fiber.' });
+  } else if (lower.includes('bread') || lower.includes('grain')) {
+    score = 70;
+    predictions.push({ disease: 'Inflammation', probability: 'Low', description: 'Minimal risk if whole grain.' });
   } else {
-    diseasePredictions.push('Inconclusive data for long-term prediction.');
+    predictions.push({ disease: 'General Risk', probability: 'Moderate', description: 'Inconclusive data, consume in moderation.' });
   }
 
   return {
     product: productName,
     score,
-    allergens: [],
+    allergens,
     nutritionInfo: { calories: 'N/A', protein: 'N/A', carbs: 'N/A', fat: 'N/A', sugar: 'N/A', salt: 'N/A' },
-    diseasePredictions,
+    predictions,
     ingredients: 'Not available (AI estimation)',
     source: 'AI Analysis',
     imageUrl: null
