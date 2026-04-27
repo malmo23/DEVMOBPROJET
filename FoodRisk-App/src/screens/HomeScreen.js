@@ -19,23 +19,38 @@ function RiskChip({ score }) {
 
 function HistoryCard({ item, onDelete, onPress }) {
   const formatDate = (ts) => {
-    if (!ts || !ts.seconds) return 'Just now';
-    return new Date(ts.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (!ts) return 'Just now';
+    // Handle both Firestore Timestamps and regular Date objects
+    const date = ts.toDate ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts));
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
-    <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.8} style={styles.card}>
-      <View style={styles.cardRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.foodName} numberOfLines={1}>{item.product}</Text>
-          <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+    <View style={styles.card}>
+      <TouchableOpacity 
+        onPress={() => onPress(item)} 
+        activeOpacity={0.7} 
+        style={styles.cardMain}
+      >
+        <View style={styles.cardRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.foodName} numberOfLines={1}>{item.product || 'Unknown Product'}</Text>
+            <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+          </View>
+          <RiskChip score={item.score || 50} />
         </View>
-        <RiskChip score={item.score} />
-      </View>
-      <TouchableOpacity onPress={() => onDelete(item.id)} style={styles.deleteBtn} activeOpacity={0.7}>
+      </TouchableOpacity>
+      
+      <View style={styles.divider} />
+      
+      <TouchableOpacity 
+        onPress={() => onDelete(item.id)} 
+        style={styles.deleteBtn} 
+        activeOpacity={0.6}
+      >
         <Text style={styles.deleteText}>🗑  Remove</Text>
       </TouchableOpacity>
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -67,7 +82,13 @@ function HomeScreen({ navigation }) {
   };
 
   const handleViewDetails = (item) => {
-    navigation.navigate('Result', { result: item });
+    if (!item) return;
+    console.log('Navigating to Result from History:', item.product);
+    // Use the Main stack's Result screen specifically if needed
+    navigation.navigate('Main', { 
+      screen: 'Result', 
+      params: { result: item } 
+    });
   };
 
   return (
@@ -134,17 +155,18 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     ...shadows.card,
   },
-  cardRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
+  cardRow: { flexDirection: 'row', alignItems: 'center' },
+  cardMain: { padding: spacing.md },
+  divider: { height: 1, backgroundColor: '#f1f5f9', marginHorizontal: spacing.md },
   foodName: { ...typography.h3, color: colors.text, marginBottom: 2 },
   date: { ...typography.caption, color: colors.textMuted },
-  chip: { borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center', minWidth: 64 },
+  chip: { borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center', minWidth: 64, marginLeft: 10 },
   chipScore: { fontSize: 20, fontWeight: '900' },
   chipLabel: { fontSize: 11, fontWeight: '600', marginTop: 1 },
   deleteBtn: {
-    alignSelf: 'flex-end',
-    paddingVertical: 4, paddingHorizontal: 10,
-    borderRadius: radius.sm,
-    backgroundColor: '#fee2e2',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   deleteText: { color: colors.red, fontSize: 13, fontWeight: '600' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
