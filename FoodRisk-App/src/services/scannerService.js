@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Replace with your API key from https://aistudio.google.com/
-const GEMINI_API_KEY = "AIzaSyB-U4qOJgOi7fgIwX46SkCIFUWlXjl2BZ0";
+// Gemini API key is loaded from .env (EXPO_PUBLIC_GEMINI_API_KEY)
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 console.log("🚀 Gemini AI Engine: ACTIVATED");
 
@@ -98,7 +98,7 @@ export const analyzeBarcode = async (barcode) => {
 
   if (localDb[barcode]) {
     console.log('✅ Found in local database');
-    return localDb[barcode];
+    return await formatProductData(localDb[barcode], barcode, true);
   }
 
   try {
@@ -291,10 +291,36 @@ const formatProductData = async (product, searchTerm, skipAI = false) => {
       .filter(v => v && v.length > 0);
   }
 
+  // Personal Health Profile Warning Checks
+  const { getHealthConditions } = require('../../database/sqlite');
+  const healthProfile = await getHealthConditions();
+  const userConditions = healthProfile ? healthProfile.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
+  
+  const nameLower = name.toLowerCase();
+  const ingredientsLower = ingredientsText.toLowerCase();
+  const warningLabels = [];
+  
+  for (const condition of userConditions) {
+    if (ingredientsLower.includes(condition) || nameLower.includes(condition)) {
+      if (!warningLabels.includes(condition)) {
+        warningLabels.push(condition);
+      }
+      
+      const formattedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
+      const isAlreadyInAllergies = finalAllergies.some(
+        a => a.toLowerCase() === condition
+      );
+      if (!isAlreadyInAllergies) {
+        finalAllergies.push(formattedCondition);
+      }
+    }
+  }
+
   return {
     product: name,
     score,
     allergies: finalAllergies,
+    warningLabels,
     nutritionInfo,
     predictions,
     brands: product.brands || 'Unknown',
@@ -331,6 +357,29 @@ export const generateAIAnalysis = async (rawProductName, productData) => {
   let predictions = aiResult?.predictions;
   let allergies = aiResult?.allergies || productData?.allergies || [];
 
+  // Personal Health Profile Warning Checks (Manual Override/Enrichment)
+  const { getHealthConditions } = require('../../database/sqlite');
+  const healthProfile = await getHealthConditions();
+  const userConditions = healthProfile ? healthProfile.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
+  
+  const ingredientsLower = ingredientsText.toLowerCase();
+  const nameLower = productName.toLowerCase();
+  const warningLabels = productData?.warningLabels || [];
+  
+  for (const condition of userConditions) {
+    if (ingredientsLower.includes(condition) || nameLower.includes(condition)) {
+      if (!warningLabels.includes(condition)) {
+        warningLabels.push(condition);
+      }
+      
+      const formattedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
+      const isAlreadyInAllergies = allergies.some(a => a.toLowerCase() === condition);
+      if (!isAlreadyInAllergies) {
+        allergies.push(formattedCondition);
+      }
+    }
+  }
+
   if (!predictions) {
     // Basic fallback logic
     predictions = productData?.predictions || [{ disease: 'General Risk', probability: 'Moderate', description: 'Inconclusive data, consume in moderation.' }];
@@ -341,6 +390,7 @@ export const generateAIAnalysis = async (rawProductName, productData) => {
     product: productName,
     score: productData?.score || 50,
     allergies,
+    warningLabels,
     nutritionInfo: nutritionPlaceholder,
     predictions,
     brands: productData?.brands || 'Unknown',
