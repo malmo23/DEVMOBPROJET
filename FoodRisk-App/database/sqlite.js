@@ -32,16 +32,45 @@ export const initDB = async () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         riskLevel TEXT,
-        allergens TEXT,
+        allergies TEXT,
         expiryDate TEXT,
         category TEXT,
         notes TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
     `);
     console.log('✅ Database initialized');
   } catch (error) {
     console.error('❌ Database error:', error);
+  }
+};
+
+export const saveHealthConditions = async (conditions) => {
+  if (isWeb) {
+    localStorage.setItem('health_conditions', conditions);
+    return;
+  }
+  try {
+    await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);', ['health_conditions', conditions]);
+  } catch (error) {
+    console.error('❌ Error saving conditions:', error);
+  }
+};
+
+export const getHealthConditions = async () => {
+  if (isWeb) {
+    return localStorage.getItem('health_conditions') || '';
+  }
+  try {
+    const row = await db.getFirstAsync('SELECT value FROM settings WHERE key = ?;', ['health_conditions']);
+    return row ? row.value : '';
+  } catch (error) {
+    console.error('❌ Error getting conditions:', error);
+    return '';
   }
 };
 
@@ -73,10 +102,10 @@ export const addFood = async (foodData) => {
   }
 
   try {
-    const { name, riskLevel, allergens, expiryDate, category, notes } = foodData;
+    const { name, riskLevel, allergies, expiryDate, category, notes } = foodData;
     await db.runAsync(
-      'INSERT INTO foods (name, riskLevel, allergens, expiryDate, category, notes) VALUES (?, ?, ?, ?, ?, ?);',
-      [name, riskLevel, allergens, expiryDate, category, notes]
+      'INSERT INTO foods (name, riskLevel, allergies, expiryDate, category, notes) VALUES (?, ?, ?, ?, ?, ?);',
+      [name, riskLevel, allergies, expiryDate, category, notes]
     );
     console.log('✅ Food added');
   } catch (error) {

@@ -32,7 +32,7 @@ export const initDB = async () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         riskLevel TEXT,
-        allergens TEXT,
+        allergies TEXT,
         expiryDate TEXT,
         category TEXT,
         notes TEXT,
@@ -73,10 +73,10 @@ export const addFood = async (foodData) => {
   }
 
   try {
-    const { name, riskLevel, allergens, expiryDate, category, notes } = foodData;
+    const { name, riskLevel, allergies, expiryDate, category, notes } = foodData;
     await db.runAsync(
-      'INSERT INTO foods (name, riskLevel, allergens, expiryDate, category, notes) VALUES (?, ?, ?, ?, ?, ?);',
-      [name, riskLevel, allergens, expiryDate, category, notes]
+      'INSERT INTO foods (name, riskLevel, allergies, expiryDate, category, notes) VALUES (?, ?, ?, ?, ?, ?);',
+      [name, riskLevel, allergies, expiryDate, category, notes]
     );
     console.log('✅ Food added');
   } catch (error) {
