@@ -1,14 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, Alert, TouchableOpacity, StatusBar } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { getFoods, deleteFood } from '../services/foodService';
 import { colors, typography, spacing, radius, shadows } from '../theme';
+import { useLanguage } from '../i18n/LanguageContext';
 
 function RiskChip({ score }) {
+  const { t } = useLanguage();
   const bg = score > 70 ? '#d1fae5' : score > 40 ? '#fef3c7' : '#fee2e2';
   const text = score > 70 ? '#065f46' : score > 40 ? '#92400e' : '#991b1b';
-  const label = score > 70 ? 'Good' : score > 40 ? 'Moderate' : 'Poor';
+  const label = score > 70 ? t('good') : score > 40 ? t('moderate') : t('poor');
   return (
     <View style={[styles.chip, { backgroundColor: bg }]}>
       <Text style={[styles.chipScore, { color: text }]}>{score}</Text>
@@ -18,43 +21,31 @@ function RiskChip({ score }) {
 }
 
 function HistoryCard({ item, onDelete, onPress }) {
+  const { t, lang } = useLanguage();
   const formatDate = (ts) => {
-    if (!ts) return 'Just now';
-    // Handle both Firestore Timestamps and regular Date objects
-    const date = ts.toDate ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts));
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (!ts || !ts.seconds) return t('justNow');
+    return new Date(ts.seconds * 1000).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
-    <View style={styles.card}>
-      <TouchableOpacity 
-        onPress={() => onPress(item)} 
-        activeOpacity={0.7} 
-        style={styles.cardMain}
-      >
-        <View style={styles.cardRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.foodName} numberOfLines={1}>{item.product || 'Unknown Product'}</Text>
-            <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
-          </View>
-          <RiskChip score={item.score || 50} />
+    <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.8} style={styles.card}>
+      <View style={styles.cardRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.foodName} numberOfLines={1}>{item.product}</Text>
+          <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
         </View>
+        <RiskChip score={item.score} />
+      </View>
+      <TouchableOpacity onPress={() => onDelete(item.id)} style={styles.deleteBtn} activeOpacity={0.7}>
+        <Ionicons name="trash-outline" size={13} color={colors.red} style={{ marginRight: 4 }} />
+        <Text style={styles.deleteText}>{t('remove')}</Text>
       </TouchableOpacity>
-      
-      <View style={styles.divider} />
-      
-      <TouchableOpacity 
-        onPress={() => onDelete(item.id)} 
-        style={styles.deleteBtn} 
-        activeOpacity={0.6}
-      >
-        <Text style={styles.deleteText}>🗑  Remove</Text>
-      </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 }
 
 function HomeScreen({ navigation }) {
+  const { t, lang, toggleLanguage, isRTL, nextLangLabel } = useLanguage();
   const [foods, setFoods] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -82,13 +73,7 @@ function HomeScreen({ navigation }) {
   };
 
   const handleViewDetails = (item) => {
-    if (!item) return;
-    console.log('Navigating to Result from History:', item.product);
-    // Use the Main stack's Result screen specifically if needed
-    navigation.navigate('Main', { 
-      screen: 'Result', 
-      params: { result: item } 
-    });
+    navigation.navigate('Result', { result: item });
   };
 
   return (
@@ -97,23 +82,36 @@ function HomeScreen({ navigation }) {
 
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity onPress={() => navigation.openDrawer()} style={[styles.refreshBtn, { marginRight: 12 }]}>
-            <Text style={{ fontSize: 22, color: colors.white }}>☰</Text>
+          <TouchableOpacity onPress={() => navigation.getParent('Drawer')?.openDrawer()} style={[styles.refreshBtn, { marginRight: 12 }]}>
+            <Ionicons name="menu" size={22} color={colors.white} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>🕒 My History</Text>
+          <Text style={styles.headerTitle}>{t('myHistory')}</Text>
         </View>
-        <TouchableOpacity onPress={loadFoods} style={styles.refreshBtn}>
-          <Text style={{ fontSize: 20 }}>↻</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={toggleLanguage} style={[styles.langBtn, { marginRight: 8 }]}>
+            <Text style={styles.langBtnText}>{nextLangLabel}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={loadFoods} style={styles.refreshBtn}>
+            <Ionicons name="refresh" size={20} color={colors.white} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
         <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 60 }} />
       ) : foods.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={{ fontSize: 56, marginBottom: 16 }}>📭</Text>
-          <Text style={styles.emptyTitle}>No saved products yet</Text>
-          <Text style={styles.emptySubtitle}>Scan a product and tap "Save to History"</Text>
+          <Ionicons name="file-tray-outline" size={64} color="rgba(255,255,255,0.25)" style={{ marginBottom: 16 }} />
+          <Text style={styles.emptyTitle}>{t('noSavedProducts')}</Text>
+          <Text style={styles.emptySubtitle}>{t('scanAndSave')}</Text>
+          <TouchableOpacity
+            style={styles.emptyCtaBtn}
+            onPress={() => navigation.navigate('Main')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="barcode-outline" size={18} color={colors.white} style={{ marginRight: 8 }} />
+            <Text style={styles.emptyCtaText}>Scan Your First Product</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -149,41 +147,51 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
+  langBtn: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  },
+  langBtnText: { color: colors.white, fontSize: 13, fontWeight: '700' },
   card: {
     backgroundColor: colors.white,
     borderRadius: radius.lg,
     padding: spacing.md,
     ...shadows.card,
   },
-  cardRow: { flexDirection: 'row', alignItems: 'center' },
-  cardMain: { padding: spacing.md },
-  divider: { height: 1, backgroundColor: '#f1f5f9', marginHorizontal: spacing.md },
+  cardRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
   foodName: { ...typography.h3, color: colors.text, marginBottom: 2 },
   date: { ...typography.caption, color: colors.textMuted },
-  chip: { borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center', minWidth: 64, marginLeft: 10 },
+  chip: { borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center', minWidth: 64 },
   chipScore: { fontSize: 20, fontWeight: '900' },
   chipLabel: { fontSize: 11, fontWeight: '600', marginTop: 1 },
   deleteBtn: {
-    paddingVertical: 10,
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  warningBadge: {
-    backgroundColor: 'rgba(255,0,0,0.15)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginBottom: 4,
-  },
-  warningText: {
-    color: '#cc0000',
-    fontSize: 12,
-    fontWeight: '600',
+    paddingVertical: 4, paddingHorizontal: 10,
+    borderRadius: radius.sm,
+    backgroundColor: '#fee2e2',
   },
   deleteText: { color: colors.red, fontSize: 13, fontWeight: '600' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
   emptyTitle: { ...typography.h3, color: colors.white, marginBottom: 8 },
-  emptySubtitle: { ...typography.body, color: colors.textLight, textAlign: 'center' },
+  emptySubtitle: { ...typography.body, color: colors.textLight, textAlign: 'center', marginBottom: 28 },
+  emptyCtaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: radius.full,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  emptyCtaText: { color: colors.white, fontWeight: '700', fontSize: 15 },
 });
 
 export default HomeScreen;

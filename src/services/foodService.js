@@ -1,5 +1,5 @@
 import { db, auth } from '../config/firebaseConfig';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
 export const addFood = async (foodData) => {
     try {
@@ -56,4 +56,51 @@ export const deleteFood = async (id) => {
         console.error("Error deleting food: ", error);
         throw error;
     }
+};
+
+export const saveHealthConditionsCloud = async (conditions) => {
+    try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("User not authenticated");
+        const profileRef = doc(db, `users/${user.uid}/profile`, 'health');
+        await setDoc(profileRef, { conditions }, { merge: true });
+        console.log('Firestore: Health conditions saved for', user.email);
+    } catch (error) {
+        console.error('Firestore: Error saving health conditions:', error);
+        throw error;
+    }
+};
+
+export const getHealthConditionsCloud = async () => {
+    try {
+        const user = auth.currentUser;
+        if (!user) return '';
+        const profileRef = doc(db, `users/${user.uid}/profile`, 'health');
+        const snap = await getDoc(profileRef);
+        if (snap.exists()) {
+            console.log('Firestore: Health conditions loaded for', user.email);
+            return snap.data().conditions || '';
+        }
+        return '';
+    } catch (error) {
+        console.error('Firestore: Error loading health conditions:', error);
+        return '';
+    }
+};
+
+// Real-time listener — calls onChange(conditions) whenever the cloud profile changes on any device
+export const subscribeHealthConditions = (onChange) => {
+    const user = auth.currentUser;
+    if (!user) return () => {};
+    const profileRef = doc(db, `users/${user.uid}/profile`, 'health');
+    const unsubscribe = onSnapshot(profileRef, (snap) => {
+        if (snap.exists()) {
+            const conditions = snap.data().conditions || '';
+            console.log('Firestore: Real-time health update received');
+            onChange(conditions);
+        }
+    }, (error) => {
+        console.warn('Firestore: Real-time listener error:', error.message);
+    });
+    return unsubscribe;
 };

@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { ScrollView, Text, View, Alert, StyleSheet, TouchableOpacity, StatusBar, Image, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp, FadeInDown, useAnimatedStyle, useSharedValue, withSpring, withDelay } from 'react-native-reanimated';
 import CopyableText from '../components/CopyableText';
 import Button from '../components/Button';
 import { addFood } from '../services/foodService';
 import { colors, typography, spacing, radius, shadows } from '../theme';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const { width } = Dimensions.get('window');
 
@@ -23,6 +25,7 @@ function NutritionRow({ label, value, unit, delay }) {
 }
 
 export default function ResultScreen({ route, navigation }) {
+  const { t } = useLanguage();
   const { result } = route.params;
   const scoreScale = useSharedValue(0.3);
 
@@ -37,21 +40,21 @@ export default function ResultScreen({ route, navigation }) {
 
   const score = result.score;
   const scoreColor = score > 70 ? colors.scoreGood : score > 40 ? colors.scoreMid : colors.scoreBad;
-  const scoreLabel = score > 70 ? 'Excellent' : score > 40 ? 'Moderate' : 'Poor';
+  const scoreLabel = score > 70 ? t('excellent') : score > 40 ? t('moderate') : t('poor');
   const scoreEmoji = score > 70 ? '✅' : score > 40 ? '⚠️' : '🚨';
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
       <StatusBar barStyle="light-content" />
 
-      {/* Health Alert Banner at the very top */}
+      {/* ⚠️ Health Alert Banner — shown FIRST, above everything */}
       {result.warningLabels && result.warningLabels.length > 0 && (
         <View style={styles.healthAlertBanner}>
           <Text style={styles.healthAlertIcon}>⚠️</Text>
           <View style={styles.healthAlertContent}>
-            <Text style={styles.healthAlertTitle}>HEALTH ALERT</Text>
+            <Text style={styles.healthAlertTitle}>{t('healthAlert')}</Text>
             <Text style={styles.healthAlertText}>
-              Matches your profile: <Text style={styles.healthAlertBold}>{result.warningLabels.join(', ')}</Text>
+              {t('healthAlertMsg')} <Text style={styles.healthAlertBold}>{result.warningLabels.join(', ')}</Text>
             </Text>
           </View>
         </View>
@@ -61,10 +64,10 @@ export default function ResultScreen({ route, navigation }) {
 
       {/* Top bar */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => navigation.replace('Welcome')} style={styles.backBtn}>
-          <Text style={styles.backIcon}>‹</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Welcome')} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={26} color={colors.white} />
         </TouchableOpacity>
-        <Text style={styles.topTitle}>Analysis Result</Text>
+        <Text style={styles.topTitle}>{t('analysisResult')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -77,7 +80,7 @@ export default function ResultScreen({ route, navigation }) {
             </View>
           )}
           <CopyableText style={styles.productName}>{result.product}</CopyableText>
-          <Text style={styles.sourceText}>Analyzed via {result.source}</Text>
+          <Text style={styles.sourceText}>{t('analyzedVia')} {result.source}</Text>
           
           <Animated.View style={[styles.scoreContainer, animatedScoreStyle]}>
             <LinearGradient 
@@ -92,7 +95,7 @@ export default function ResultScreen({ route, navigation }) {
           </Animated.View>
 
           <View style={[styles.scoreLabelPill, { backgroundColor: scoreColor + '33', borderColor: scoreColor }]}>
-            <Text style={[styles.scoreLabelText, { color: scoreColor }]}>{scoreEmoji} {scoreLabel} Health Score</Text>
+            <Text style={[styles.scoreLabelText, { color: scoreColor }]}>{scoreEmoji} {scoreLabel} {t('healthScore')}</Text>
           </View>
         </Animated.View>
 
@@ -101,35 +104,64 @@ export default function ResultScreen({ route, navigation }) {
           {/* Disease Predictions */}
           <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.glassSection}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>🔮 AI Health Insights</Text>
-              <Text style={styles.predictionIntro}>Long-term consumption analysis</Text>
+              <Text style={styles.sectionTitle}>{t('longTermRisks')}</Text>
+              <Text style={styles.predictionIntro}>{t('chronicConsumption')}</Text>
             </View>
             <View style={styles.predictionsList}>
-              {result.predictions?.map((p, i) => (
-                <View key={i} style={styles.predictionCard}>
-                  <View style={styles.predictionHeader}>
-                    <Text style={styles.diseaseName}>{p.disease}</Text>
-                    <View style={[styles.probBadge, { 
-                      backgroundColor: p.probability === 'High' ? '#ef4444' : p.probability === 'Moderate' ? '#f59e0b' : '#10b981' 
-                    }]}>
-                      <Text style={styles.probText}>{p.probability}</Text>
+              {result.predictions?.map((p, i) => {
+                const isHigh = p.probability === 'High';
+                const isMod = p.probability === 'Moderate';
+                const probColor = isHigh ? '#ef4444' : isMod ? '#f59e0b' : '#10b981';
+                const probBg = isHigh ? 'rgba(239,68,68,0.12)' : isMod ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)';
+                const impact = p.impact || (isHigh ? 8 : isMod ? 5 : 3);
+                const impactWidth = `${impact * 10}%`;
+                return (
+                  <View key={i} style={[styles.predictionCard, { borderLeftColor: probColor, backgroundColor: probBg }]}>
+                    <View style={styles.predictionHeader}>
+                      <Text style={styles.diseaseName}>{p.disease}</Text>
+                      <View style={[styles.probBadge, { backgroundColor: probColor }]}>
+                        <Text style={styles.probText}>{isHigh ? t('highRisk') : isMod ? t('moderateRisk') : t('lowRisk')}</Text>
+                      </View>
+                    </View>
+
+                    {/* Impact bar */}
+                    <View style={styles.impactBarRow}>
+                      <Text style={styles.impactLabel}>{t('severity')}</Text>
+                      <View style={styles.impactBarBg}>
+                        <View style={[styles.impactBarFill, { width: impactWidth, backgroundColor: probColor }]} />
+                      </View>
+                      <Text style={[styles.impactScore, { color: probColor }]}>{impact}/10</Text>
+                    </View>
+
+                    <Text style={styles.diseaseDesc}>{p.description}</Text>
+
+                    <View style={styles.predictionMeta}>
+                      {p.nutrientCause ? (
+                        <View style={styles.metaChip}>
+                          <Text style={styles.metaChipText}>⚗️ {p.nutrientCause}</Text>
+                        </View>
+                      ) : null}
+                      {p.timeframe ? (
+                        <View style={styles.metaChip}>
+                          <Text style={styles.metaChipText}>⏱ {p.timeframe}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
-                  <Text style={styles.diseaseDesc}>{p.description}</Text>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </Animated.View>
 
           {/* Nutrition Info */}
           {result.nutritionInfo && (
             <Animated.View entering={FadeInDown.delay(500).springify()} style={styles.glassSection}>
-              <Text style={styles.sectionTitle}>📊 Nutrition Facts (100g)</Text>
+              <Text style={styles.sectionTitle}>{t('nutritionFacts')}</Text>
               <View style={styles.gridContainer}>
-                <NutritionRow label="Calories" value={result.nutritionInfo.calories} unit="kcal" delay={600} />
-                <NutritionRow label="Sugar" value={result.nutritionInfo.sugar} unit="g" delay={700} />
-                <NutritionRow label="Protein" value={result.nutritionInfo.protein} unit="g" delay={800} />
-                <NutritionRow label="Fat" value={result.nutritionInfo.fat} unit="g" delay={900} />
+                <NutritionRow label={t('calories')} value={result.nutritionInfo.calories} unit="kcal" delay={600} />
+                <NutritionRow label={t('sugar')} value={result.nutritionInfo.sugar} unit="g" delay={700} />
+                <NutritionRow label={t('protein')} value={result.nutritionInfo.protein} unit="g" delay={800} />
+                <NutritionRow label={t('fat')} value={result.nutritionInfo.fat} unit="g" delay={900} />
               </View>
             </Animated.View>
           )}
@@ -137,7 +169,7 @@ export default function ResultScreen({ route, navigation }) {
           {/* Allergies */}
           {result.allergies?.length > 0 && (
             <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.glassSection}>
-              <Text style={[styles.sectionTitle, { color: '#fca5a5' }]}>⚠️ Potential Allergies</Text>
+              <Text style={[styles.sectionTitle, { color: '#fca5a5' }]}>{t('potentialAllergies')}</Text>
               <View style={styles.allergyChips}>
                 {result.allergies.map((a, i) => (
                   <View key={i} style={styles.allergyChip}>
@@ -151,7 +183,7 @@ export default function ResultScreen({ route, navigation }) {
           {/* Ingredients */}
           {result.ingredients && (
             <Animated.View entering={FadeInDown.delay(700).springify()} style={styles.glassSection}>
-              <Text style={styles.sectionTitle}>🧪 Ingredients</Text>
+              <Text style={styles.sectionTitle}>{t('ingredients')}</Text>
               <CopyableText style={styles.ingredients}>{result.ingredients}</CopyableText>
             </Animated.View>
           )}
@@ -160,21 +192,21 @@ export default function ResultScreen({ route, navigation }) {
         {/* Actions */}
         <Animated.View entering={FadeInDown.delay(800)} style={styles.actions}>
           <Button
-            title="💾 Save"
+            title={t('save')}
             onPress={async () => {
               try {
                 await addFood(result);
-                Alert.alert('Success', 'Saved to your health profile.');
+                Alert.alert(t('success'), t('savedSuccess'));
               } catch (e) {
-                Alert.alert('Error', e.message);
+                Alert.alert(t('error'), e.message);
               }
             }}
             color={colors.amber}
             style={{ flex: 1, marginRight: 10 }}
           />
           <Button
-            title="🔄 Retake"
-            onPress={() => navigation.replace('Welcome')}
+            title={t('retake')}
+            onPress={() => navigation.navigate('Welcome')}
             color="#475569"
             style={{ flex: 1 }}
           />
@@ -195,7 +227,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
-  backIcon: { color: colors.white, fontSize: 32, fontWeight: '300', marginTop: -4 },
+  backIcon: { color: colors.white },
   topTitle: { ...typography.h3, color: colors.white, fontWeight: '700' },
   scoreHero: { alignItems: 'center', paddingTop: 20, paddingBottom: 10 },
   imageContainer: {
@@ -233,17 +265,28 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 17, fontWeight: '800', color: colors.white, marginBottom: 16 },
   predictionIntro: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
-  predictionsList: { gap: 12 },
+  predictionsList: { gap: 14 },
   predictionCard: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
     padding: 16, borderRadius: 16,
-    borderLeftWidth: 3, borderLeftColor: colors.primary,
+    borderLeftWidth: 4, borderLeftColor: colors.primary,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
-  predictionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  diseaseName: { fontSize: 16, fontWeight: '700', color: '#e2e8f0' },
-  probBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
-  probText: { fontSize: 11, fontWeight: '800', color: '#fff' },
-  diseaseDesc: { fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 18 },
+  predictionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  diseaseName: { fontSize: 15, fontWeight: '800', color: '#f1f5f9', flex: 1, marginRight: 8 },
+  probBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  probText: { fontSize: 11, fontWeight: '900', color: '#fff', letterSpacing: 0.3 },
+  impactBarRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
+  impactLabel: { fontSize: 11, color: 'rgba(255,255,255,0.4)', width: 52 },
+  impactBarBg: { flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' },
+  impactBarFill: { height: '100%', borderRadius: 3 },
+  impactScore: { fontSize: 12, fontWeight: '800', width: 32, textAlign: 'right' },
+  diseaseDesc: { fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 20, marginBottom: 10 },
+  predictionMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  metaChip: {
+    backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+  },
+  metaChipText: { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: '600' },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   nutritionRow: {
     width: (width - 80) / 2,
@@ -264,35 +307,24 @@ const styles = StyleSheet.create({
   healthAlertBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.9)',
-    paddingHorizontal: spacing.lg,
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 18,
     paddingVertical: 14,
+    paddingTop: 52,
     borderBottomWidth: 2,
-    borderBottomColor: '#b91c1c',
-    zIndex: 10,
+    borderBottomColor: '#991b1b',
+    zIndex: 100,
   },
-  healthAlertIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  healthAlertContent: {
-    flex: 1,
-  },
+  healthAlertIcon: { fontSize: 26, marginRight: 12 },
+  healthAlertContent: { flex: 1 },
   healthAlertTitle: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    marginBottom: 2,
-  },
-  healthAlertText: {
-    color: '#fecaca',
+    color: '#fff',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 3,
   },
-  healthAlertBold: {
-    color: '#ffffff',
-    fontWeight: '800',
-  },
+  healthAlertText: { color: '#fecaca', fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  healthAlertBold: { color: '#fff', fontWeight: '800' },
 });
 

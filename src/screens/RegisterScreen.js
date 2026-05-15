@@ -12,17 +12,14 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
 
   const handleRegister = async () => {
-
-    setErrorMessage('');
     if (!name || !email || !password) {
-      setErrorMessage('Please fill in all fields');
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
     if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters');
+      Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
     setLoading(true);
@@ -30,16 +27,7 @@ export default function RegisterScreen({ navigation }) {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: name });
     } catch (error) {
-      console.log('Register Error:', error.code, error.message);
-      if (error.code === 'auth/email-already-in-use') {
-        setErrorMessage('This email is already in use. Please sign in instead.');
-      } else if (error.code === 'auth/invalid-email') {
-        setErrorMessage('Please enter a valid email address.');
-      } else if (error.code === 'auth/weak-password') {
-        setErrorMessage('Password is too weak.');
-      } else {
-        setErrorMessage('Failed to create account. Please try again later.');
-      }
+      Alert.alert('Registration Error', error.message);
     } finally {
       setLoading(false);
     }
@@ -102,10 +90,6 @@ export default function RegisterScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {errorMessage ? (
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          ) : null}
-
           {loading ? (
             <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 20 }} />
           ) : (
@@ -158,7 +142,6 @@ const styles = StyleSheet.create({
   inputIcon: { fontSize: 16, marginRight: 8 },
   input: { flex: 1, paddingVertical: 13, fontSize: 15, color: colors.text },
   eyeBtn: { padding: 4 },
-  errorText: { color: colors.danger || '#ef4444', textAlign: 'center', marginTop: 10, fontSize: 14, fontWeight: '500' },
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.md },
   footerText: { color: colors.textMuted, fontSize: 14 },
   link: { color: colors.primary, fontWeight: '700', fontSize: 14 },

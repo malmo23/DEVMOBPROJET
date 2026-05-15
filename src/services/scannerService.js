@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Gemini API key is loaded from .env (EXPO_PUBLIC_GEMINI_API_KEY)
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+// Replace with your API key from https://aistudio.google.com/
+const GEMINI_API_KEY = "AIzaSyB-U4qOJgOi7fgIwX46SkCIFUWlXjl2BZ0";
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 console.log("🚀 Gemini AI Engine: ACTIVATED");
 
@@ -55,33 +55,57 @@ const getGeminiPrediction = async (productName, nutrition, ingredients) => {
   if (!genAI) return null;
 
   try {
-    const { getHealthConditions } = require('../../database/sqlite');
-    const healthProfile = await getHealthConditions();
+    let healthProfile = '';
+    try {
+      const { getHealthConditionsCloud } = require('./foodService');
+      healthProfile = await getHealthConditionsCloud();
+    } catch (_) {}
+    if (!healthProfile) {
+      const { getHealthConditions } = require('../../database/sqlite');
+      healthProfile = await getHealthConditions();
+    }
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const prompt = `
-      Analyze this food product: "${productName}"
-      Nutrition (per 100g): ${JSON.stringify(nutrition)}
-      Ingredients: ${ingredients}
-      
-      ${healthProfile ? `USER HEALTH PROFILE: ${healthProfile}. IMPORTANT: Prioritize identifying risks and providing warnings specifically related to these conditions.` : ""}
+You are a clinical nutritionist and medical expert. Analyze this food product for long-term chronic consumption health risks.
 
-      1. Predict 3-4 specific long-term health risks/diseases associated with chronic consumption.
-      2. Identify all potential allergens/allergies present in the ingredients.
+PRODUCT: "${productName}"
+NUTRITION (per 100g): ${JSON.stringify(nutrition)}
+INGREDIENTS: ${ingredients}
+${healthProfile ? `\nUSER HEALTH PROFILE: ${healthProfile}\nIMPORTANT: Flag any risks especially dangerous for these specific conditions with extra severity.` : ""}
 
-      Return ONLY a JSON object in this format:
-      {
-        "predictions": [{"disease": "Name", "probability": "High/Moderate/Low", "description": "1-sentence medical explanation"}],
-        "allergies": ["ALLERGY1", "ALLERGY2"]
-      }
+Provide a detailed analysis with exactly 4 long-term health risk predictions based on SCIENTIFIC EVIDENCE of chronic consumption.
+
+For each risk, provide:
+- A specific disease or condition name (e.g. "Type 2 Diabetes", "Colorectal Cancer", "Hypertension", "Non-Alcoholic Fatty Liver Disease")
+- Probability level: "High", "Moderate", or "Low" — based on the actual nutritional values
+- A 2-sentence medical explanation citing the specific ingredient or nutrient responsible
+- A timeframe of risk (e.g. "5-10 years", "10+ years", "2-5 years")
+- An impact score 1-10 (10 = most severe)
+
+Also identify all allergens in the ingredients.
+
+Return ONLY valid JSON in this exact format, no markdown:
+{
+  "predictions": [
+    {
+      "disease": "Disease Name",
+      "probability": "High",
+      "description": "Two sentence scientific explanation of the risk.",
+      "timeframe": "5-10 years",
+      "impact": 8,
+      "nutrientCause": "Sugar / Palm Oil / Sodium / etc"
+    }
+  ],
+  "allergies": ["ALLERGY1", "ALLERGY2"]
+}
     `;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
     
-    // Improved JSON extraction
-    const jsonMatch = text.match(/\{.*\}/s);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
     }
@@ -96,68 +120,70 @@ const getGeminiPrediction = async (productName, nutrition, ingredients) => {
 export const analyzeBarcode = async (barcode) => {
   console.log('🔍 Analyzing barcode:', barcode);
 
-  // Attempt to fetch from Open Food Facts API first
-  try {
+  if (localDb[barcode]) {
+    console.log('✅ Found in local database, enriching with health profile...');
+    const local = localDb[barcode];
+    const syntheticProduct = {
+      product_name: local.product,
+      nutriscore_grade: null,
+      nutriments: {
+        'energy-kcal_100g': local.nutritionInfo?.calories,
+        proteins_100g: local.nutritionInfo?.protein,
+        carbohydrates_100g: local.nutritionInfo?.carbs,
+        fat_100g: local.nutritionInfo?.fat,
+        sugars_100g: local.nutritionInfo?.sugar,
+        salt_100g: local.nutritionInfo?.salt,
+      },
+      allergens_tags: local.allergies || [],
+      ingredients_text: local.ingredients || '',
+      image_url: local.imageUrl || null,
+      brands: local.brands || '',
+    };
+    return await formatProductData(syntheticProduct, barcode);
+  }
+
+  const tryFetch = async (url) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(url, { signal: controller.signal, headers: HEADERS });
+      clearTimeout(timeoutId);
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (e) {
+      clearTimeout(timeoutId);
+      console.log('Fetch error for', url, e.message);
+      return null;
+    }
+  };
 
-    const response = await fetch(
-      `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`,
-      {
-        signal: controller.signal,
-        headers: HEADERS
-      }
-    );
+  try {
+    // Try v2 first (more up-to-date), fall back to v0
+    let data = await tryFetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}?fields=product_name,nutriscore_grade,nutriments,allergens_tags,allergens_hierarchy,ingredients_text,ingredients_text_en,image_url,brands`);
+    
+    if (!data || data.status !== 1 || !data.product) {
+      console.log('v2 miss, trying v0...');
+      data = await tryFetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+    }
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) throw new Error('API request failed');
-
-    const data = await response.json();
-    if (data.status === 1 && data.product) {
+    if (data && data.status === 1 && data.product) {
+      console.log('✅ Product found:', data.product.product_name);
       return await formatProductData(data.product, barcode);
     }
 
-    // If API returns no product, fall back to local database if available
-    if (localDb[barcode]) {
-      console.log('✅ Found in local database (fallback)');
-      return await formatProductData(localDb[barcode], barcode, true);
-    }
+    console.log('❌ Barcode not found in any database:', barcode);
+    const notFoundErr = new Error('BARCODE_NOT_FOUND');
+    notFoundErr.notFound = true;
+    notFoundErr.barcode = barcode;
+    throw notFoundErr;
 
-    // Return generic unknown product response
-    return {
-      product: `Unknown Product (${barcode})`,
-      score: 50,
-      allergies: [],
-      predictions: [{
-        disease: 'Unknown Risk',
-        probability: 'N/A',
-        description: 'No data found for this barcode.'
-      }],
-      nutritionInfo: { calories: 'N/A', protein: 'N/A', carbs: 'N/A', fat: 'N/A', sugar: 'N/A', salt: 'N/A' },
-      ingredients: 'Not available',
-      source: 'Unknown Product',
-      imageUrl: null
-    };
   } catch (error) {
+    if (error.notFound) throw error;
     console.log('Barcode API Error:', error);
-    // On network error, also try local database before giving up
-    if (localDb[barcode]) {
-      console.log('✅ Found in local database (error fallback)');
-      return await formatProductData(localDb[barcode], barcode, true);
-    }
-    return {
-      product: "Connection Error",
-      score: 50,
-      allergies: [],
-      predictions: [{
-        disease: 'Offline',
-        probability: 'N/A',
-        description: 'Check your internet connection.'
-      }],
-      imageUrl: null,
-      source: 'Offline Fallback'
-    };
+    const netErr = new Error('NETWORK_ERROR');
+    netErr.networkError = true;
+    netErr.message = error.message;
+    throw netErr;
   }
 };
 
@@ -246,22 +272,121 @@ const generateHeuristicPredictions = (product, nutrition) => {
   const predictions = [];
   const sugar = parseFloat(nutrition.sugar);
   const fat = parseFloat(nutrition.fat);
+  const salt = parseFloat(nutrition.salt);
+  const calories = parseFloat(nutrition.calories);
   const ingredients = (product.ingredients_text_en || product.ingredients_text || '').toLowerCase();
 
   if (!isNaN(sugar) && sugar > 18) {
-    predictions.push({ disease: 'Type 2 Diabetes', probability: 'High', description: 'Chronic high sugar intake causes insulin resistance.' });
+    predictions.push({
+      disease: 'Type 2 Diabetes',
+      probability: sugar > 30 ? 'High' : 'Moderate',
+      description: `High sugar content (${sugar}g/100g) causes repeated insulin spikes, leading to insulin resistance over time. Chronic intake raises HbA1c levels and significantly increases diabetes risk.`,
+      timeframe: sugar > 30 ? '5-10 years' : '10+ years',
+      impact: sugar > 30 ? 8 : 6,
+      nutrientCause: 'Sugar'
+    });
   }
-  if (!isNaN(fat) && fat > 25) {
-    predictions.push({ disease: 'Metabolic Syndrome', probability: 'High', description: 'High lipid density promotes systemic inflammation.' });
+
+  if (!isNaN(sugar) && sugar > 10) {
+    predictions.push({
+      disease: 'Dental Caries & Oral Disease',
+      probability: 'High',
+      description: `Sugar content of ${sugar}g/100g feeds oral bacteria that produce enamel-eroding acids. Regular consumption accelerates tooth decay and gum disease progression.`,
+      timeframe: '1-3 years',
+      impact: 5,
+      nutrientCause: 'Sugar'
+    });
   }
-  if (ingredients.includes('nitrite') || ingredients.includes('nitrate')) {
-    predictions.push({ disease: 'Colorectal Cancer', probability: 'Moderate', description: 'Processed preservatives are classified carcinogens.' });
+
+  if (!isNaN(fat) && fat > 20) {
+    predictions.push({
+      disease: 'Cardiovascular Disease',
+      probability: fat > 30 ? 'High' : 'Moderate',
+      description: `Fat content of ${fat}g/100g elevates LDL cholesterol and promotes arterial plaque buildup. Chronic consumption increases risk of heart attack and stroke significantly.`,
+      timeframe: '10+ years',
+      impact: fat > 30 ? 9 : 7,
+      nutrientCause: 'Saturated Fat'
+    });
+  }
+
+  if (!isNaN(fat) && fat > 15) {
+    predictions.push({
+      disease: 'Non-Alcoholic Fatty Liver Disease',
+      probability: 'Moderate',
+      description: `Excess fat (${fat}g/100g) and sugar overload the liver's metabolic capacity, leading to fat accumulation. This can progress to liver inflammation and fibrosis without symptoms.`,
+      timeframe: '5-15 years',
+      impact: 7,
+      nutrientCause: 'Fat & Sugar'
+    });
+  }
+
+  if (!isNaN(salt) && salt > 1.5) {
+    predictions.push({
+      disease: 'Hypertension',
+      probability: salt > 2.5 ? 'High' : 'Moderate',
+      description: `Sodium content (${salt}g/100g) causes water retention and increases blood vessel pressure. Sustained high intake raises systolic blood pressure and risk of stroke by up to 40%.`,
+      timeframe: '3-8 years',
+      impact: 8,
+      nutrientCause: 'Sodium'
+    });
+  }
+
+  if (ingredients.includes('nitrite') || ingredients.includes('nitrate') || ingredients.includes('e250') || ingredients.includes('e251')) {
+    predictions.push({
+      disease: 'Colorectal Cancer',
+      probability: 'Moderate',
+      description: 'Nitrites and nitrates are classified as Group 2A carcinogens by the IARC. They form N-nitroso compounds in the gut that damage DNA and can trigger colorectal tumor growth over decades.',
+      timeframe: '15-20 years',
+      impact: 8,
+      nutrientCause: 'Nitrites / Nitrates'
+    });
+  }
+
+  if (ingredients.includes('palm oil') || ingredients.includes('huile de palme')) {
+    predictions.push({
+      disease: 'Metabolic Syndrome',
+      probability: 'Moderate',
+      description: 'Palm oil is high in saturated palmitic acid, which triggers systemic inflammation and insulin resistance. Chronic intake is linked to obesity, dyslipidemia, and elevated cardiovascular risk.',
+      timeframe: '5-10 years',
+      impact: 7,
+      nutrientCause: 'Palm Oil'
+    });
+  }
+
+  if (ingredients.includes('aspartame') || ingredients.includes('acesulfame') || ingredients.includes('sucralose')) {
+    predictions.push({
+      disease: 'Gut Microbiome Disruption',
+      probability: 'Moderate',
+      description: 'Artificial sweeteners alter gut microbiota composition and reduce beneficial bacteria diversity. Emerging research links chronic intake to glucose intolerance and metabolic dysregulation.',
+      timeframe: '2-5 years',
+      impact: 5,
+      nutrientCause: 'Artificial Sweeteners'
+    });
+  }
+
+  if (!isNaN(calories) && calories > 450) {
+    predictions.push({
+      disease: 'Obesity',
+      probability: 'High',
+      description: `Very high caloric density (${calories} kcal/100g) promotes caloric surplus with regular consumption. Sustained excess calories lead to adipose tissue accumulation and metabolic complications.`,
+      timeframe: '2-5 years',
+      impact: 7,
+      nutrientCause: 'High Caloric Density'
+    });
   }
 
   if (predictions.length === 0) {
-    predictions.push({ disease: 'Low Chronic Risk', probability: 'Very Low', description: 'No significant disease markers found.' });
+    predictions.push({
+      disease: 'Low Chronic Risk',
+      probability: 'Low',
+      description: 'No significant disease risk markers detected in this product\'s nutritional profile. Moderate consumption as part of a balanced diet appears relatively safe.',
+      timeframe: 'N/A',
+      impact: 2,
+      nutrientCause: 'None identified'
+    });
   }
-  return predictions;
+
+  return predictions.slice(0, 4);
 };
 
 const formatProductData = async (product, searchTerm, skipAI = false) => {
@@ -299,51 +424,49 @@ const formatProductData = async (product, searchTerm, skipAI = false) => {
       .filter(v => v && v.length > 0);
   }
 
-  // Personal Health Profile Warning Checks
-  const { getHealthConditions } = require('../../database/sqlite');
-  const healthProfile = await getHealthConditions();
+  // Personal Health Profile Warning Checks (cloud-first, local fallback)
+  let healthProfile = '';
+  try {
+    const { getHealthConditionsCloud } = require('./foodService');
+    healthProfile = await getHealthConditionsCloud();
+  } catch (_) {}
+  if (!healthProfile) {
+    const { getHealthConditions } = require('../../database/sqlite');
+    healthProfile = await getHealthConditions();
+  }
   const userConditions = healthProfile ? healthProfile.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
-  
+
   const nameLower = name.toLowerCase();
   const ingredientsLower = ingredientsText.toLowerCase();
   const warningLabels = [];
-  
-  // Check nutrition data against health conditions
+
   const sugar = parseFloat(nutritionInfo.sugar);
   const salt = parseFloat(nutritionInfo.salt);
   const fat = parseFloat(nutritionInfo.fat);
-  
-  if (userConditions.includes('diabetes') && !isNaN(sugar) && sugar > 15) {
-    if (!warningLabels.includes('diabetes')) {
-      warningLabels.push('diabetes');
-    }
+
+  if (userConditions.includes('diabetes') && !isNaN(sugar) && sugar > 10) {
+    if (!warningLabels.includes('Diabetes')) warningLabels.push('Diabetes');
   }
-  
   if ((userConditions.includes('hypertension') || userConditions.includes('high blood pressure')) && !isNaN(salt) && salt > 1) {
-    if (!warningLabels.includes('high blood pressure')) {
-      warningLabels.push('high blood pressure');
-    }
+    if (!warningLabels.includes('Hypertension')) warningLabels.push('Hypertension');
   }
-  
-  if ((userConditions.includes('heart disease') || userConditions.includes('cardiovascular')) && !isNaN(fat) && fat > 20) {
-    if (!warningLabels.includes('heart disease')) {
-      warningLabels.push('heart disease');
-    }
+  if ((userConditions.includes('heart disease') || userConditions.includes('cardiovascular')) && !isNaN(fat) && fat > 15) {
+    if (!warningLabels.includes('Heart Disease')) warningLabels.push('Heart Disease');
   }
-  
+  if ((userConditions.includes('obesity') || userConditions.includes('overweight')) && !isNaN(parseFloat(nutritionInfo.calories)) && parseFloat(nutritionInfo.calories) > 400) {
+    if (!warningLabels.includes('Obesity Risk')) warningLabels.push('Obesity Risk');
+  }
+
   for (const condition of userConditions) {
     if (ingredientsLower.includes(condition) || nameLower.includes(condition)) {
-      if (!warningLabels.includes(condition)) {
-        warningLabels.push(condition);
-      }
-      
-      const formattedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
-      const isAlreadyInAllergies = finalAllergies.some(
-        a => a.toLowerCase() === condition
-      );
-      if (!isAlreadyInAllergies) {
-        finalAllergies.push(formattedCondition);
-      }
+      const label = condition.charAt(0).toUpperCase() + condition.slice(1);
+      if (!warningLabels.includes(label)) warningLabels.push(label);
+    }
+    // allergy match in allergens
+    const allergenMatch = finalAllergies.some(a => a.toLowerCase().includes(condition));
+    if (allergenMatch) {
+      const label = condition.charAt(0).toUpperCase() + condition.slice(1);
+      if (!warningLabels.includes(label)) warningLabels.push(label);
     }
   }
 
@@ -388,56 +511,54 @@ export const generateAIAnalysis = async (rawProductName, productData) => {
   let predictions = aiResult?.predictions;
   let allergies = aiResult?.allergies || productData?.allergies || [];
 
-  // Personal Health Profile Warning Checks (Manual Override/Enrichment)
-  const { getHealthConditions } = require('../../database/sqlite');
-  const healthProfile = await getHealthConditions();
+  if (!predictions) {
+    predictions = productData?.predictions || [{ disease: 'General Risk', probability: 'Moderate', description: 'Inconclusive data, consume in moderation.', timeframe: 'N/A', impact: 4, nutrientCause: 'Unknown' }];
+    if (lower.includes('soda')) predictions = [{ disease: 'Type 2 Diabetes', probability: 'High', description: 'Continuous exposure to liquid sugars raises insulin resistance significantly.', timeframe: '5-10 years', impact: 8, nutrientCause: 'Sugar' }];
+  }
+
+  // Personal Health Profile Warning Checks (cloud-first, local fallback)
+  let healthProfile = '';
+  try {
+    const { getHealthConditionsCloud } = require('./foodService');
+    healthProfile = await getHealthConditionsCloud();
+  } catch (_) {}
+  if (!healthProfile) {
+    const { getHealthConditions } = require('../../database/sqlite');
+    healthProfile = await getHealthConditions();
+  }
   const userConditions = healthProfile ? healthProfile.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
-  
+
   const ingredientsLower = ingredientsText.toLowerCase();
   const nameLower = productName.toLowerCase();
   const warningLabels = productData?.warningLabels || [];
-  
-  // Check nutrition data against health conditions
+
   const sugar = parseFloat(nutritionPlaceholder.sugar);
   const salt = parseFloat(nutritionPlaceholder.salt);
   const fat = parseFloat(nutritionPlaceholder.fat);
-  
-  if (userConditions.includes('diabetes') && !isNaN(sugar) && sugar > 15) {
-    if (!warningLabels.includes('diabetes')) {
-      warningLabels.push('diabetes');
-    }
+
+  if (userConditions.includes('diabetes') && !isNaN(sugar) && sugar > 10) {
+    if (!warningLabels.includes('Diabetes')) warningLabels.push('Diabetes');
   }
-  
   if ((userConditions.includes('hypertension') || userConditions.includes('high blood pressure')) && !isNaN(salt) && salt > 1) {
-    if (!warningLabels.includes('high blood pressure')) {
-      warningLabels.push('high blood pressure');
-    }
+    if (!warningLabels.includes('Hypertension')) warningLabels.push('Hypertension');
   }
-  
-  if ((userConditions.includes('heart disease') || userConditions.includes('cardiovascular')) && !isNaN(fat) && fat > 20) {
-    if (!warningLabels.includes('heart disease')) {
-      warningLabels.push('heart disease');
-    }
+  if ((userConditions.includes('heart disease') || userConditions.includes('cardiovascular')) && !isNaN(fat) && fat > 15) {
+    if (!warningLabels.includes('Heart Disease')) warningLabels.push('Heart Disease');
   }
-  
-  for (const condition of userConditions) {
-    if (ingredientsLower.includes(condition) || nameLower.includes(condition)) {
-      if (!warningLabels.includes(condition)) {
-        warningLabels.push(condition);
-      }
-      
-      const formattedCondition = condition.charAt(0).toUpperCase() + condition.slice(1);
-      const isAlreadyInAllergies = allergies.some(a => a.toLowerCase() === condition);
-      if (!isAlreadyInAllergies) {
-        allergies.push(formattedCondition);
-      }
-    }
+  if ((userConditions.includes('obesity') || userConditions.includes('overweight')) && !isNaN(parseFloat(nutritionPlaceholder.calories)) && parseFloat(nutritionPlaceholder.calories) > 400) {
+    if (!warningLabels.includes('Obesity Risk')) warningLabels.push('Obesity Risk');
   }
 
-  if (!predictions) {
-    // Basic fallback logic
-    predictions = productData?.predictions || [{ disease: 'General Risk', probability: 'Moderate', description: 'Inconclusive data, consume in moderation.' }];
-    if (lower.includes('soda')) predictions = [{ disease: 'Type 2 Diabetes', probability: 'High', description: 'Continuous exposure to liquid sugars.' }];
+  for (const condition of userConditions) {
+    if (ingredientsLower.includes(condition) || nameLower.includes(condition)) {
+      const label = condition.charAt(0).toUpperCase() + condition.slice(1);
+      if (!warningLabels.includes(label)) warningLabels.push(label);
+    }
+    const allergenMatch = allergies.some(a => a.toLowerCase().includes(condition));
+    if (allergenMatch) {
+      const label = condition.charAt(0).toUpperCase() + condition.slice(1);
+      if (!warningLabels.includes(label)) warningLabels.push(label);
+    }
   }
 
   return {

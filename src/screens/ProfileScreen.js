@@ -1,24 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, TextInput, ActivityIndicator, TouchableOpacity, StatusBar } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../config/firebaseConfig';
+import { saveHealthConditionsCloud, getHealthConditionsCloud, subscribeHealthConditions } from '../services/foodService';
 import {
   updateProfile, sendEmailVerification, sendPasswordResetEmail, signOut, verifyBeforeUpdateEmail, updateEmail,
 } from 'firebase/auth';
 import Button from '../components/Button';
 import { colors, typography, spacing, radius, shadows } from '../theme';
+import { useLanguage } from '../i18n/LanguageContext';
 
-function ActionRow({ icon, label, onPress, danger }) {
+function ActionRow({ iconName, label, onPress, danger }) {
   return (
     <TouchableOpacity onPress={onPress} style={[styles.actionRow, danger && styles.dangerRow]} activeOpacity={0.7}>
-      <Text style={{ fontSize: 20 }}>{icon}</Text>
+      <Ionicons name={iconName} size={20} color={danger ? colors.red : colors.textMuted} />
       <Text style={[styles.actionLabel, danger && styles.dangerLabel]}>{label}</Text>
-      <Text style={[styles.actionChevron, danger && styles.dangerLabel]}>›</Text>
+      <Ionicons name="chevron-forward" size={18} color={danger ? colors.red : colors.textMuted} />
     </TouchableOpacity>
   );
 }
 
 export default function ProfileScreen({ navigation }) {
+  const { toggleLanguage, nextLangLabel } = useLanguage();
   const [user, setUser] = useState(auth.currentUser);
   const [name, setName] = useState(user?.displayName || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -35,29 +39,57 @@ export default function ProfileScreen({ navigation }) {
         if (!isEditing) { setName(u.displayName || ''); setEmail(u.email || ''); }
       }
     });
-    
-    // Load health conditions
-    const loadHealth = async () => {
-      const { getHealthConditions } = require('../../database/sqlite');
-      const conditions = await getHealthConditions();
-      setHealthConditions(conditions);
-    };
-    loadHealth();
 
-    return unsub;
-  }, [isEditing]);
+    // Real-time Firestore listener — updates instantly when any device saves
+    const unsubHealth = subscribeHealthConditions(async (cloudConditions) => {
+      if (!isEditingHealth) {
+        setHealthConditions(cloudConditions);
+        // Keep local in sync
+        try {
+          const { saveHealthConditions } = require('../../database/sqlite');
+          await saveHealthConditions(cloudConditions);
+        } catch (_) {}
+      }
+    });
+
+    // On first load: if cloud is empty, migrate local data up
+    (async () => {
+      try {
+        const cloud = await getHealthConditionsCloud();
+        if (!cloud) {
+          const { getHealthConditions, saveHealthConditions } = require('../../database/sqlite');
+          const local = await getHealthConditions();
+          if (local) {
+            await saveHealthConditionsCloud(local);
+            console.log('Migrated local health profile to cloud');
+          }
+        }
+      } catch (_) {}
+    })();
+
+    return () => { unsub(); unsubHealth(); };
+  }, [isEditing, isEditingHealth]);
 
   const handleSaveHealth = async () => {
     setLoading(true);
+    const { saveHealthConditions } = require('../../database/sqlite');
+    let cloudOk = false;
     try {
-      const { saveHealthConditions } = require('../../database/sqlite');
-      await saveHealthConditions(healthConditions);
-      Alert.alert('Success', 'Health profile updated!');
-      setIsEditingHealth(false);
+      await saveHealthConditionsCloud(healthConditions);
+      cloudOk = true;
     } catch (e) {
-      Alert.alert('Error', 'Failed to save health profile');
-    } finally {
-      setLoading(false);
+      console.warn('Cloud save failed:', e.message);
+    }
+    try {
+      await saveHealthConditions(healthConditions);
+    } catch (_) {}
+
+    setLoading(false);
+    setIsEditingHealth(false);
+    if (cloudOk) {
+      Alert.alert('✅ Synced', 'Health profile updated across all your devices.');
+    } else {
+      Alert.alert('⚠️ Saved locally', 'Saved on this device only. Check your internet connection — changes will sync when you reopen the profile.');
     }
   };
 
@@ -133,8 +165,11 @@ export default function ProfileScreen({ navigation }) {
       <StatusBar barStyle="light-content" />
 
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => navigation.openDrawer()} style={styles.menuBtn}>
-          <Text style={{ fontSize: 24, color: colors.white }}>☰</Text>
+        <TouchableOpacity onPress={() => navigation.getParent('Drawer')?.openDrawer()} style={styles.menuBtn}>
+          <Ionicons name="menu" size={24} color={colors.white} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={toggleLanguage} style={styles.langBtn}>
+          <Text style={styles.langBtnText}>{nextLangLabel}</Text>
         </TouchableOpacity>
       </View>
 
@@ -248,15 +283,15 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Security</Text>
           {!user.emailVerified && (
-            <ActionRow icon="📩" label="Send Verification Email" onPress={handleVerify} />
+            <ActionRow iconName="mail-outline" label="Send Verification Email" onPress={handleVerify} />
           )}
-          <ActionRow icon="🔑" label="Reset Password" onPress={handleReset} />
+          <ActionRow iconName="key-outline" label="Reset Password" onPress={handleReset} />
         </View>
 
         {/* Danger Zone */}
         <View style={[styles.card, styles.dangerCard]}>
           <Text style={[styles.cardTitle, { color: colors.red }]}>Danger Zone</Text>
-          <ActionRow icon="🚪" label="Log Out" onPress={handleLogout} danger />
+          <ActionRow iconName="log-out-outline" label="Log Out" onPress={handleLogout} danger />
         </View>
       </ScrollView>
     </LinearGradient>
@@ -270,7 +305,15 @@ const styles = StyleSheet.create({
     marginTop: 40,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
+  langBtn: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: radius.full,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  langBtnText: { color: colors.white, fontWeight: '700', fontSize: 13 },
   menuBtn: {
     width: 44,
     height: 44,
@@ -322,7 +365,7 @@ const styles = StyleSheet.create({
   },
   dangerRow: { borderBottomWidth: 0 },
   actionLabel: { flex: 1, ...typography.body, color: colors.text, fontWeight: '500' },
-  actionChevron: { color: colors.textMuted, fontSize: 22 },
+  actionChevron: { color: colors.textMuted },
   dangerLabel: { color: colors.red },
   chipsContainer: {
     flexDirection: 'row',

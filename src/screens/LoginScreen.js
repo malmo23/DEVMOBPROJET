@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, StatusBar } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../config/firebaseConfig';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import Button from '../components/Button';
 import { colors, typography, spacing, radius, shadows } from '../theme';
 
@@ -11,26 +12,17 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
 
   const handleLogin = async () => {
-    setErrorMessage('');
     if (!email || !password) {
-      setErrorMessage('Please enter both email and password');
+      Alert.alert('Error', 'Please enter both email and password');
       return;
     }
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
-      console.log('Login Error:', error.code, error.message);
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        setErrorMessage('Incorrect email or password. Please try again.');
-      } else if (error.code === 'auth/invalid-email') {
-        setErrorMessage('Please enter a valid email address.');
-      } else {
-        setErrorMessage('Failed to sign in. Please try again later.');
-      }
+      Alert.alert('Login Error', error.message);
     } finally {
       setLoading(false);
     }
@@ -43,7 +35,7 @@ export default function LoginScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoCircle}>
-          <Text style={{ fontSize: 32 }}>🥗</Text>
+          <Ionicons name="leaf" size={32} color={colors.primary} />
         </View>
         <Text style={styles.appName}>FoodRisk</Text>
         <Text style={styles.tagline}>Welcome back</Text>
@@ -55,7 +47,7 @@ export default function LoginScreen({ navigation }) {
 
         <Text style={styles.label}>Email</Text>
         <View style={styles.inputWrapper}>
-          <Text style={styles.inputIcon}>📧</Text>
+          <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="your@email.com"
@@ -69,7 +61,7 @@ export default function LoginScreen({ navigation }) {
 
         <Text style={styles.label}>Password</Text>
         <View style={styles.inputWrapper}>
-          <Text style={styles.inputIcon}>🔒</Text>
+          <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
           <TextInput
             style={[styles.input, { flex: 1 }]}
             placeholder="Enter password"
@@ -79,13 +71,21 @@ export default function LoginScreen({ navigation }) {
             secureTextEntry={!showPassword}
           />
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-            <Text style={{ fontSize: 18 }}>{showPassword ? '🙈' : '👁️'}</Text>
+            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
 
-        {errorMessage ? (
-          <Text style={styles.errorText}>{errorMessage}</Text>
-        ) : null}
+        <TouchableOpacity
+          onPress={() => {
+            if (!email) { Alert.alert('Enter your email first'); return; }
+            sendPasswordResetEmail(auth, email)
+              .then(() => Alert.alert('Sent', `Password reset email sent to ${email}.`))
+              .catch((e) => Alert.alert('Error', e.message));
+          }}
+          style={styles.forgotBtn}
+        >
+          <Text style={styles.forgotText}>Forgot password?</Text>
+        </TouchableOpacity>
 
         {loading ? (
           <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 20 }} />
@@ -134,7 +134,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 4,
   },
-  inputIcon: { fontSize: 16, marginRight: 8 },
+  inputIcon: { marginRight: 8 },
+  forgotBtn: { alignSelf: 'flex-end', marginTop: 6 },
+  forgotText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   input: {
     flex: 1,
     paddingVertical: 13,
@@ -142,7 +144,6 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   eyeBtn: { padding: 4 },
-  errorText: { color: colors.danger || '#ef4444', textAlign: 'center', marginTop: 10, fontSize: 14, fontWeight: '500' },
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.md },
   footerText: { color: colors.textMuted, fontSize: 14 },
   link: { color: colors.primary, fontWeight: '700', fontSize: 14 },

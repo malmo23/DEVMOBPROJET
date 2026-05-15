@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator, DrawerContentScrollView } from '@react-navigation/drawer';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../config/firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
@@ -18,6 +20,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 const Stack = createNativeStackNavigator();
 const AuthStack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
+const Tab = createBottomTabNavigator();
 
 function AuthNavigator() {
   return (
@@ -40,20 +43,56 @@ function MainStack() {
   );
 }
 
+function BottomTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: '#0d1f35',
+          borderTopColor: 'rgba(255,255,255,0.08)',
+          borderTopWidth: 1,
+          height: 62,
+          paddingBottom: 8,
+          paddingTop: 6,
+        },
+        tabBarActiveTintColor: '#10b981',
+        tabBarInactiveTintColor: 'rgba(255,255,255,0.35)',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarIcon: ({ focused, color, size }) => {
+          const icons = {
+            Main: focused ? 'home' : 'home-outline',
+            History: focused ? 'time' : 'time-outline',
+            Profile: focused ? 'person' : 'person-outline',
+          };
+          return <Ionicons name={icons[route.name]} size={size} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen name="Main" component={MainStack} options={{ tabBarLabel: 'Home' }} />
+      <Tab.Screen name="History" component={HomeScreen} options={{ tabBarLabel: 'History' }} />
+      <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarLabel: 'Profile' }} />
+    </Tab.Navigator>
+  );
+}
+
 function CustomDrawerContent(props) {
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1, paddingTop: 40 }}>
       <View style={{ paddingHorizontal: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', marginBottom: 10 }}>
         <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }}>FoodRisk</Text>
       </View>
-      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Main')}>
-        <Text style={styles.drawerText}>🏠 Dashboard</Text>
+      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Tabs', { screen: 'Main' })}>
+        <Ionicons name="home-outline" size={18} color="#fff" style={{ marginRight: 12 }} />
+        <Text style={styles.drawerText}>Dashboard</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Home')}>
-        <Text style={styles.drawerText}>🕒 History</Text>
+      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Tabs', { screen: 'History' })}>
+        <Ionicons name="time-outline" size={18} color="#fff" style={{ marginRight: 12 }} />
+        <Text style={styles.drawerText}>History</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Profile')}>
-        <Text style={styles.drawerText}>👤 Account</Text>
+      <TouchableOpacity style={styles.drawerItem} onPress={() => props.navigation.navigate('Tabs', { screen: 'Profile' })}>
+        <Ionicons name="person-outline" size={18} color="#fff" style={{ marginRight: 12 }} />
+        <Text style={styles.drawerText}>Account</Text>
       </TouchableOpacity>
 
       <View style={{ flex: 1 }} />
@@ -62,7 +101,8 @@ function CustomDrawerContent(props) {
         style={[styles.drawerItem, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 20, marginBottom: 40 }]}
         onPress={() => signOut(auth)}
       >
-        <Text style={[styles.drawerText, { color: '#ef4444' }]}>🚪 Log Out</Text>
+        <Ionicons name="log-out-outline" size={18} color="#ef4444" style={{ marginRight: 12 }} />
+        <Text style={[styles.drawerText, { color: '#ef4444' }]}>Log Out</Text>
       </TouchableOpacity>
     </DrawerContentScrollView>
   );
@@ -71,6 +111,7 @@ function CustomDrawerContent(props) {
 function AppNavigator() {
   return (
     <Drawer.Navigator
+      id="Drawer"
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
@@ -82,9 +123,7 @@ function AppNavigator() {
         drawerInactiveTintColor: 'rgba(255,255,255,0.6)',
       }}
     >
-      <Drawer.Screen name="Main" component={MainStack} />
-      <Drawer.Screen name="Home" component={HomeScreen} />
-      <Drawer.Screen name="Profile" component={ProfileScreen} />
+      <Drawer.Screen name="Tabs" component={BottomTabs} />
     </Drawer.Navigator>
   );
 }
@@ -94,7 +133,6 @@ export default function RootNavigator() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize Database
     const { initDB } = require('../../database/sqlite');
     initDB();
 
@@ -118,6 +156,8 @@ export default function RootNavigator() {
 
 const styles = StyleSheet.create({
   drawerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 15,
     paddingHorizontal: 20,
     marginBottom: 5,
@@ -126,5 +166,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  }
+  },
 });

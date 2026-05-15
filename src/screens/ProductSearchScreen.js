@@ -1,17 +1,21 @@
 import { useState } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, Keyboard, ActivityIndicator, TouchableOpacity, StatusBar, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Button from '../components/Button';
 import { searchProducts, generateAIAnalysis } from '../services/scannerService';
 import { colors, typography, spacing, radius, shadows } from '../theme';
+import { useLanguage } from '../i18n/LanguageContext';
 
-const EXAMPLES = ['Coca-Cola', 'Nutella', 'Apple', 'Orange Juice', 'Whole Wheat Bread'];
+const EXAMPLES = ['Coca-Cola', 'Nutella', 'Snickers', 'Pringles', 'Whole Wheat Bread'];
 
 export default function ProductSearchScreen({ navigation }) {
+  const { t } = useLanguage();
   const [productName, setProductName] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
 
   const handleSearch = async (name = productName) => {
     const query = (name || productName).trim();
@@ -19,9 +23,10 @@ export default function ProductSearchScreen({ navigation }) {
       alert('Please enter a product name');
       return;
     }
+    setSearching(true);
     setLoading(true);
     setHasSearched(false);
-    setResults([]); 
+    setResults([]);
     Keyboard.dismiss();
     
     try {
@@ -34,6 +39,7 @@ export default function ProductSearchScreen({ navigation }) {
       alert('Error searching products');
     } finally {
       setLoading(false);
+      setSearching(false);
     }
   };
 
@@ -60,7 +66,7 @@ export default function ProductSearchScreen({ navigation }) {
       navigation.replace('Result', { result: aiResult });
     } catch (err) {
       console.log('AI Fallback Error:', err);
-      alert('AI Analysis failed. Please check your connection.');
+      alert('AI Analysis failed.');
     } finally {
       setLoading(false);
     }
@@ -73,9 +79,9 @@ export default function ProductSearchScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>‹</Text>
+          <Ionicons name="chevron-back" size={26} color={colors.white} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Find Food</Text>
+        <Text style={styles.headerTitle}>{t('findFood')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -85,12 +91,12 @@ export default function ProductSearchScreen({ navigation }) {
         contentContainerStyle={{ paddingBottom: 60 }}
       >
         <View style={styles.searchCard}>
-          <Text style={styles.inputLabel}>WHAT ARE YOU LOOKING FOR?</Text>
+          <Text style={styles.inputLabel}>{t('whatLooking')}</Text>
           <View style={styles.inputWrapper}>
-            <Text style={{ fontSize: 18, marginRight: 8 }}>🔍</Text>
+            <Ionicons name="search-outline" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.input}
-              placeholder="e.g., Nutella, Prince, Coke..."
+              placeholder={t('placeholder')}
               placeholderTextColor="#94a3b8"
               value={productName}
               onChangeText={(txt) => {
@@ -102,28 +108,28 @@ export default function ProductSearchScreen({ navigation }) {
             />
             {productName.length > 0 && (
               <TouchableOpacity onPress={() => { setProductName(''); setResults([]); setHasSearched(false); }} style={{ padding: 4 }}>
-                <Text style={{ color: '#94a3b8', fontSize: 18 }}>✕</Text>
+                <Ionicons name="close-circle" size={18} color="#94a3b8" />
               </TouchableOpacity>
             )}
           </View>
 
           <Button 
-            title={loading ? "Searching..." : "Search Product"} 
+            title={loading ? (t('search') + '...') : t('search')} 
             onPress={() => handleSearch()} 
             color={colors.primary} 
             disabled={loading}
           />
         </View>
 
-        {loading ? (
+        {(loading || searching) ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Performing deep AI analysis...</Text>
+            <Text style={styles.loadingText}>Searching products...</Text>
           </View>
         ) : hasSearched ? (
           <View style={styles.resultsContainer}>
             <Text style={styles.resultsTitle}>
-              {results.length > 0 ? `FOUND ${results.length} MATCHES` : "NO EXACT MATCHES FOUND"}
+              {results.length > 0 ? `${t('results').toUpperCase()}: ${results.length}` : t('noResults').toUpperCase()}
             </Text>
             
             {results.map((item, idx) => (
@@ -138,17 +144,12 @@ export default function ProductSearchScreen({ navigation }) {
                     <Image source={{ uri: item.imageUrl }} style={styles.resultThumb} resizeMode="contain" />
                   ) : (
                     <View style={[styles.resultThumb, { backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={{ fontSize: 20 }}>🍴</Text>
+                      <Ionicons name="nutrition-outline" size={24} color="#475569" />
                     </View>
                   )}
                   <View style={{ flex: 1, marginLeft: 15 }}>
                     <Text style={styles.resultName} numberOfLines={1}>{item.product}</Text>
                     <Text style={styles.resultBrand} numberOfLines={1}>{item.brands}</Text>
-                    {item.warningLabels && item.warningLabels.length > 0 && (
-                      <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '700', marginTop: 4 }} numberOfLines={1}>
-                        ⚠️ Match: {item.warningLabels.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(', ')}
-                      </Text>
-                    )}
                   </View>
                   <View style={[styles.scoreBadge, { backgroundColor: item.score > 70 ? '#10b981' : item.score > 40 ? '#f59e0b' : '#ef4444' }]}>
                     <Text style={styles.scoreText}>{item.score}</Text>
@@ -159,18 +160,18 @@ export default function ProductSearchScreen({ navigation }) {
 
             <TouchableOpacity style={styles.aiButton} onPress={handleAIFallback}>
               <View style={styles.aiButtonContent}>
-                <Text style={{ fontSize: 24, marginRight: 12 }}>✨</Text>
+                <Ionicons name="sparkles" size={22} color={colors.primary} style={{ marginRight: 12 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.aiButtonText}>AI Health Check for "{productName}"</Text>
                   <Text style={styles.aiButtonSub}>Analyze health risks based on name</Text>
                 </View>
-                <Text style={{ color: colors.primary, fontSize: 20 }}>›</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.primary} />
               </View>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.examplesSection}>
-            <Text style={styles.sectionLabel}>POPULAR SEARCHES</Text>
+            <Text style={styles.sectionLabel}>{t('popularSearches')}</Text>
             <View style={styles.chips}>
               {EXAMPLES.map((ex) => (
                 <TouchableOpacity
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
-  backIcon: { color: colors.white, fontSize: 28, fontWeight: '300', marginTop: -2 },
+  backIcon: { color: colors.white },
   headerTitle: { ...typography.h3, color: colors.white, letterSpacing: 0.5 },
   searchCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',
