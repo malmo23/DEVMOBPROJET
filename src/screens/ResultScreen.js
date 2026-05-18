@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ScrollView, Text, View, Alert, StyleSheet, TouchableOpacity, StatusBar, Image, Dimensions } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { ScrollView, Text, View, StyleSheet, TouchableOpacity, StatusBar, Image, Dimensions, Animated as RNAnimated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp, FadeInDown, useAnimatedStyle, useSharedValue, withSpring, withDelay } from 'react-native-reanimated';
@@ -24,10 +24,45 @@ function NutritionRow({ label, value, unit, delay }) {
   );
 }
 
+function Toast({ message, type }) {
+  const bg = type === 'error' ? '#ef4444' : '#10b981';
+  const icon = type === 'error' ? 'close-circle' : 'checkmark-circle';
+  return (
+    <View style={[toastStyles.container, { backgroundColor: bg }]}>
+      <Ionicons name={icon} size={18} color="#fff" style={{ marginRight: 8 }} />
+      <Text style={toastStyles.text} numberOfLines={2}>{message}</Text>
+    </View>
+  );
+}
+
+const toastStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: 20, borderRadius: 14,
+    paddingHorizontal: 18, paddingVertical: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25, shadowRadius: 10, elevation: 10,
+  },
+  text: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1 },
+});
+
 export default function ResultScreen({ route, navigation }) {
-  const { t } = useLanguage();
+  const { t, toggleLanguage, nextLangLabel } = useLanguage();
   const { result } = route.params;
   const scoreScale = useSharedValue(0.3);
+  const [toast, setToast] = useState(null);
+  const toastAnim = useRef(new RNAnimated.Value(0)).current;
+  const [saved, setSaved] = useState(false);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    toastAnim.setValue(0);
+    RNAnimated.sequence([
+      RNAnimated.spring(toastAnim, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }),
+      RNAnimated.delay(2800),
+      RNAnimated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => setToast(null));
+  };
 
   useEffect(() => {
     scoreScale.value = withDelay(300, withSpring(1, { damping: 12 }));
@@ -46,6 +81,14 @@ export default function ResultScreen({ route, navigation }) {
   return (
     <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
       <StatusBar barStyle="light-content" />
+      {toast && (
+        <RNAnimated.View style={[
+          toastStyles2.wrapper,
+          { transform: [{ translateY: toastAnim.interpolate({ inputRange: [0,1], outputRange: [-80, 0] }) }], opacity: toastAnim },
+        ]}>
+          <Toast message={toast.message} type={toast.type} />
+        </RNAnimated.View>
+      )}
 
       {/* ⚠️ Health Alert Banner — shown FIRST, above everything */}
       {result.warningLabels && result.warningLabels.length > 0 && (
@@ -68,7 +111,9 @@ export default function ResultScreen({ route, navigation }) {
           <Ionicons name="chevron-back" size={26} color={colors.white} />
         </TouchableOpacity>
         <Text style={styles.topTitle}>{t('analysisResult')}</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity onPress={toggleLanguage} style={styles.langBtn}>
+          <Text style={styles.langBtnText}>{nextLangLabel}</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
@@ -192,16 +237,23 @@ export default function ResultScreen({ route, navigation }) {
         {/* Actions */}
         <Animated.View entering={FadeInDown.delay(800)} style={styles.actions}>
           <Button
-            title={t('save')}
+            title={saved ? '✅ Saved' : t('save')}
             onPress={async () => {
+              if (saved) { showToast('This product is already in your history.', 'warn'); return; }
               try {
                 await addFood(result);
-                Alert.alert(t('success'), t('savedSuccess'));
+                setSaved(true);
+                showToast(t('savedSuccess'));
               } catch (e) {
-                Alert.alert(t('error'), e.message);
+                if (e.code === 'already_saved') {
+                  setSaved(true);
+                  showToast('This product is already saved in your history.', 'warn');
+                } else {
+                  showToast(e.message, 'error');
+                }
               }
             }}
-            color={colors.amber}
+            color={saved ? '#64748b' : colors.amber}
             style={{ flex: 1, marginRight: 10 }}
           />
           <Button
@@ -304,6 +356,13 @@ const styles = StyleSheet.create({
   allergyText: { color: '#fca5a5', fontWeight: '700', fontSize: 13 },
   ingredients: { color: 'rgba(255,255,255,0.5)', fontSize: 13, lineHeight: 20 },
   actions: { flexDirection: 'row', paddingHorizontal: 20, marginTop: 10 },
+  langBtn: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  },
+  langBtnText: { color: colors.white, fontSize: 13, fontWeight: '700' },
   healthAlertBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -326,5 +385,11 @@ const styles = StyleSheet.create({
   },
   healthAlertText: { color: '#fecaca', fontSize: 13, fontWeight: '500', lineHeight: 18 },
   healthAlertBold: { color: '#fff', fontWeight: '800' },
+});
+
+const toastStyles2 = StyleSheet.create({
+  wrapper: {
+    position: 'absolute', top: 56, left: 0, right: 0, zIndex: 999,
+  },
 });
 

@@ -1,36 +1,108 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TextInput, ActivityIndicator, TouchableOpacity, StatusBar } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert, TextInput, ActivityIndicator, TouchableOpacity, StatusBar, Platform, Animated, Modal, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../config/firebaseConfig';
 import { saveHealthConditionsCloud, getHealthConditionsCloud, subscribeHealthConditions } from '../services/foodService';
 import {
-  updateProfile, sendEmailVerification, sendPasswordResetEmail, signOut, verifyBeforeUpdateEmail, updateEmail,
+  updateProfile, sendEmailVerification, sendPasswordResetEmail, signOut, verifyBeforeUpdateEmail,
 } from 'firebase/auth';
 import Button from '../components/Button';
 import { colors, typography, spacing, radius, shadows } from '../theme';
 import { useLanguage } from '../i18n/LanguageContext';
 
-function ActionRow({ iconName, label, onPress, danger }) {
+function Toast({ message, type }) {
+  const bg = type === 'error' ? '#ef4444' : type === 'warn' ? '#f59e0b' : '#10b981';
+  const icon = type === 'error' ? 'close-circle' : type === 'warn' ? 'warning' : 'checkmark-circle';
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.actionRow, danger && styles.dangerRow]} activeOpacity={0.7}>
+    <View style={[toastStyles.container, { backgroundColor: bg }]}>
+      <Ionicons name={icon} size={20} color="#fff" style={{ marginRight: 10 }} />
+      <Text style={toastStyles.text} numberOfLines={2}>{message}</Text>
+    </View>
+  );
+}
+
+const toastStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, paddingVertical: 14,
+    borderRadius: 14, marginHorizontal: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25, shadowRadius: 10, elevation: 10,
+  },
+  text: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1 },
+});
+
+function ActionRow({ iconName, label, onPress, danger, loading, disabled }) {
+  const inactive = loading || disabled;
+  return (
+    <TouchableOpacity
+      onPress={inactive ? undefined : onPress}
+      style={[styles.actionRow, danger && styles.dangerRow, inactive && { opacity: 0.5 }]}
+      activeOpacity={inactive ? 1 : 0.7}
+    >
       <Ionicons name={iconName} size={20} color={danger ? colors.red : colors.textMuted} />
       <Text style={[styles.actionLabel, danger && styles.dangerLabel]}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={danger ? colors.red : colors.textMuted} />
+      {loading
+        ? <ActivityIndicator size="small" color={danger ? colors.red : colors.primary} />
+        : disabled
+          ? <Ionicons name="time-outline" size={18} color={colors.textMuted} />
+          : <Ionicons name="chevron-forward" size={18} color={danger ? colors.red : colors.textMuted} />
+      }
     </TouchableOpacity>
   );
 }
 
 export default function ProfileScreen({ navigation }) {
-  const { toggleLanguage, nextLangLabel } = useLanguage();
+  const { toggleLanguage, nextLangLabel, t } = useLanguage();
   const [user, setUser] = useState(auth.currentUser);
+  const [toast, setToast] = useState(null);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    toastAnim.setValue(0);
+    Animated.sequence([
+      Animated.spring(toastAnim, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }),
+      Animated.delay(2800),
+      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => setToast(null));
+  };
   const [name, setName] = useState(user?.displayName || '');
   const [email, setEmail] = useState(user?.email || '');
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyCooldown, setVerifyCooldown] = useState(0);
+  const verifyCooldownRef = useRef(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetCooldown, setResetCooldown] = useState(0);
+  const resetCooldownRef = useRef(null);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [healthConditions, setHealthConditions] = useState('');
   const [newCondition, setNewCondition] = useState('');
   const [isEditingHealth, setIsEditingHealth] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState(null);
+  const appStateRef = useRef(AppState.currentState);
+
+  useEffect(() => {
+    const appStateSub = AppState.addEventListener('change', async (nextState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          await currentUser.reload();
+          const refreshed = auth.currentUser;
+          setUser({ ...refreshed });
+          if (pendingEmail && refreshed.email === pendingEmail && refreshed.emailVerified) {
+            setPendingEmail(null);
+          }
+        }
+      }
+      appStateRef.current = nextState;
+    });
+    return () => appStateSub.remove();
+  }, [pendingEmail]);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
@@ -67,7 +139,11 @@ export default function ProfileScreen({ navigation }) {
       } catch (_) {}
     })();
 
-    return () => { unsub(); unsubHealth(); };
+    return () => {
+      unsub(); unsubHealth();
+      clearInterval(verifyCooldownRef.current);
+      clearInterval(resetCooldownRef.current);
+    };
   }, [isEditing, isEditingHealth]);
 
   const handleSaveHealth = async () => {
@@ -87,9 +163,9 @@ export default function ProfileScreen({ navigation }) {
     setLoading(false);
     setIsEditingHealth(false);
     if (cloudOk) {
-      Alert.alert('✅ Synced', 'Health profile updated across all your devices.');
+      showToast(t('syncedMsg'));
     } else {
-      Alert.alert('⚠️ Saved locally', 'Saved on this device only. Check your internet connection — changes will sync when you reopen the profile.');
+      showToast(t('savedLocallyMsg'), 'warn');
     }
   };
 
@@ -112,57 +188,116 @@ export default function ProfileScreen({ navigation }) {
   const initials = (user?.displayName || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
   const handleUpdate = async () => {
-    if (!name.trim()) { Alert.alert('Error', 'Name cannot be empty'); return; }
+    if (!name.trim()) { showToast('Name cannot be empty', 'error'); return; }
     setLoading(true);
     try {
-      if (name !== user.displayName) await updateProfile(user, { displayName: name });
-      if (email !== user.email) {
-        try {
-          await verifyBeforeUpdateEmail(user, email);
-          Alert.alert('Check your email', `Verification sent to ${email}.`);
-        } catch {
-          await updateEmail(user, email);
-          Alert.alert('Success', 'Email updated.');
+      if (name !== user.displayName) {
+        await updateProfile(auth.currentUser, { displayName: name.trim() });
+      }
+      if (email.trim().toLowerCase() !== user.email) {
+        if (!auth.currentUser.emailVerified) {
+          showToast('Please verify your current email address before changing it.', 'warn');
+          setLoading(false);
+          return;
         }
+        const newEmail = email.trim().toLowerCase();
+        await verifyBeforeUpdateEmail(auth.currentUser, newEmail);
+        setPendingEmail(newEmail);
+        showToast(`A confirmation link was sent to ${newEmail}. Click it to apply the change.`);
+        setEmail(user.email);
       } else {
-        Alert.alert('Success', 'Profile updated!');
+        showToast('Profile updated!');
       }
       setIsEditing(false);
-    } catch (e) { Alert.alert('Error', e.message); }
-    finally { setLoading(false); }
+    } catch (e) {
+      if (e.code === 'auth/operation-not-allowed') {
+        showToast('Email change is not allowed until your current email is verified.', 'warn');
+      } else if (e.code === 'auth/requires-recent-login') {
+        showToast('For security, please log out and log back in before changing your email.', 'warn');
+      } else if (e.code === 'auth/invalid-email') {
+        showToast('The new email address is not valid.', 'error');
+      } else if (e.code === 'auth/email-already-in-use') {
+        showToast('This email is already linked to another account.', 'error');
+      } else {
+        showToast(e.message, 'error');
+      }
+    } finally { setLoading(false); }
+  };
+
+  const startCooldown = (setter, ref, seconds = 60) => {
+    setter(seconds);
+    ref.current = setInterval(() => {
+      setter(prev => {
+        if (prev <= 1) { clearInterval(ref.current); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
   const handleVerify = async () => {
-    setLoading(true);
+    if (verifyLoading || verifyCooldown > 0) return;
+    setVerifyLoading(true);
     try {
-      await user.reload();
-      await sendEmailVerification(auth.currentUser);
-      Alert.alert('Sent', `Verification link sent to ${auth.currentUser.email}.`);
-    } catch (e) { Alert.alert('Error', e.message); }
-    finally { setLoading(false); }
+      const currentUser = auth.currentUser;
+      if (!currentUser) { showToast('No user logged in.', 'error'); setVerifyLoading(false); return; }
+      await sendEmailVerification(currentUser);
+      showToast(`Verification email sent to ${currentUser.email}`);
+      startCooldown(setVerifyCooldown, verifyCooldownRef);
+    } catch (e) {
+      if (e.code === 'auth/too-many-requests') {
+        showToast('A verification email was already sent. Please check your inbox (or spam folder).', 'warn');
+        startCooldown(setVerifyCooldown, verifyCooldownRef, 120);
+      } else {
+        showToast(e.message, 'error');
+      }
+    } finally { setVerifyLoading(false); }
   };
 
   const handleReset = async () => {
-    setLoading(true);
+    if (resetLoading || resetCooldown > 0) return;
+    setResetLoading(true);
     try {
-      await sendPasswordResetEmail(auth, user.email);
-      Alert.alert('Sent', 'Password reset email sent.');
-    } catch (e) { Alert.alert('Error', e.message); }
-    finally { setLoading(false); }
+      const currentUser = auth.currentUser;
+      if (!currentUser?.email) { showToast('No email address found.', 'error'); setResetLoading(false); return; }
+      await sendPasswordResetEmail(auth, currentUser.email);
+      showToast(`Password reset email sent to ${currentUser.email}`);
+      startCooldown(setResetCooldown, resetCooldownRef);
+    } catch (e) {
+      if (e.code === 'auth/too-many-requests') {
+        showToast('A reset email was already sent. Please check your inbox (or spam folder).', 'warn');
+        startCooldown(setResetCooldown, resetCooldownRef, 120);
+      } else {
+        showToast(e.message, 'error');
+      }
+    } finally { setResetLoading(false); }
   };
 
-  const handleLogout = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log Out', style: 'destructive', onPress: () => signOut(auth) },
-    ]);
+  const handleLogout = () => setShowLogoutConfirm(true);
+
+  const confirmLogout = async () => {
+    setShowLogoutConfirm(false);
+    setLogoutLoading(true);
+    try {
+      await signOut(auth);
+    } catch (e) {
+      showToast(e.message, 'error');
+      setLogoutLoading(false);
+    }
   };
 
   if (!user) return null;
 
+  const toastY = toastAnim.interpolate({ inputRange: [0, 1], outputRange: [-80, 0] });
+
   return (
     <LinearGradient colors={['#0a1628', '#0d2137', '#0f3d2e']} style={styles.container}>
       <StatusBar barStyle="light-content" />
+
+      {toast && (
+        <Animated.View style={[styles.toastWrapper, { transform: [{ translateY: toastY }], opacity: toastAnim }]}>
+          <Toast message={toast.message} type={toast.type} />
+        </Animated.View>
+      )}
 
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => navigation.getParent('Drawer')?.openDrawer()} style={styles.menuBtn}>
@@ -179,9 +314,15 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
         <Text style={styles.userName}>{user.displayName || 'User'}</Text>
-        <View style={[styles.verifiedBadge, { backgroundColor: user.emailVerified ? '#d1fae522' : '#fef3c722', borderColor: user.emailVerified ? colors.primary : colors.amber }]}>
-          <Text style={[styles.verifiedText, { color: user.emailVerified ? colors.primary : colors.amber }]}>
-            {user.emailVerified ? '✅ Verified Account' : '⚠️ Email not verified'}
+        <View style={[
+          styles.verifiedBadge,
+          { backgroundColor: pendingEmail ? '#eff6ff22' : user.emailVerified ? '#d1fae522' : '#fef3c722',
+            borderColor: pendingEmail ? '#60a5fa' : user.emailVerified ? colors.primary : colors.amber },
+        ]}>
+          <Text style={[styles.verifiedText, { color: pendingEmail ? '#60a5fa' : user.emailVerified ? colors.primary : colors.amber }]}>
+            {pendingEmail
+              ? `📧 Confirm new email: ${pendingEmail}`
+              : user.emailVerified ? t('verifiedAccount') : t('notVerified')}
           </Text>
         </View>
       </View>
@@ -190,24 +331,24 @@ export default function ProfileScreen({ navigation }) {
         {/* Profile Info Card */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Profile Info</Text>
+            <Text style={styles.cardTitle}>{t('profileInfo')}</Text>
             {!isEditing && (
               <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.editBtn}>
-                <Text style={styles.editBtnText}>Edit</Text>
+                <Text style={styles.editBtnText}>{t('edit')}</Text>
               </TouchableOpacity>
             )}
           </View>
 
-          <Text style={styles.fieldLabel}>FULL NAME</Text>
+          <Text style={styles.fieldLabel}>{t('fullName')}</Text>
           {isEditing ? (
             <TextInput style={styles.input} value={name} onChangeText={setName} />
           ) : (
-            <Text style={styles.fieldValue}>{user.displayName || 'Not Set'}</Text>
+            <Text style={styles.fieldValue}>{user.displayName || t('notSet')}</Text>
           )}
 
           <View style={styles.divider} />
 
-          <Text style={styles.fieldLabel}>EMAIL ADDRESS</Text>
+          <Text style={styles.fieldLabel}>{t('emailAddress')}</Text>
           {isEditing ? (
             <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
           ) : (
@@ -218,8 +359,8 @@ export default function ProfileScreen({ navigation }) {
             <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 20 }} />
           ) : isEditing ? (
             <View style={styles.editActions}>
-              <Button title="Save Changes" onPress={handleUpdate} color={colors.primary} style={{ flex: 1, marginRight: 6 }} />
-              <Button title="Cancel" onPress={() => setIsEditing(false)} color={colors.textMuted} style={{ flex: 1, marginLeft: 6 }} />
+              <Button title={t('saveChanges')} onPress={handleUpdate} color={colors.primary} style={{ flex: 1, marginRight: 6 }} />
+              <Button title={t('cancel')} onPress={() => setIsEditing(false)} color={colors.textMuted} style={{ flex: 1, marginLeft: 6 }} />
             </View>
           ) : null}
         </View>
@@ -227,15 +368,15 @@ export default function ProfileScreen({ navigation }) {
         {/* Health Profile Card */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>🧬 Health Profile</Text>
+            <Text style={styles.cardTitle}>{t('healthProfile')}</Text>
             {!isEditingHealth && (
               <TouchableOpacity onPress={() => setIsEditingHealth(true)} style={styles.editBtn}>
-                <Text style={styles.editBtnText}>Edit</Text>
+                <Text style={styles.editBtnText}>{t('edit')}</Text>
               </TouchableOpacity>
             )}
           </View>
 
-          <Text style={styles.fieldLabel}>MY HEALTH CONDITIONS & ALLERGIES</Text>
+          <Text style={styles.fieldLabel}>{t('myConditions')}</Text>
           
           <View style={styles.chipsContainer}>
             {(healthConditions ? healthConditions.split(',').map(s => s.trim()).filter(Boolean) : []).map((condition, index) => (
@@ -249,7 +390,7 @@ export default function ProfileScreen({ navigation }) {
               </View>
             ))}
             {!isEditingHealth && !healthConditions && (
-              <Text style={styles.fieldValue}>No conditions set</Text>
+              <Text style={styles.fieldValue}>{t('noConditions')}</Text>
             )}
           </View>
 
@@ -259,41 +400,83 @@ export default function ProfileScreen({ navigation }) {
                 style={styles.addInput}
                 value={newCondition}
                 onChangeText={setNewCondition}
-                placeholder="Add condition or allergy..."
+                placeholder={t('addCondition')}
                 placeholderTextColor="#94a3b8"
                 onSubmitEditing={handleAddCondition}
               />
               <TouchableOpacity onPress={handleAddCondition} style={styles.addConditionBtn}>
-                <Text style={styles.addConditionBtnText}>Add</Text>
+                <Text style={styles.addConditionBtnText}>{t('add')}</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          <Text style={styles.helperText}>AI uses these to provide personalized risk warnings.</Text>
+          <Text style={styles.helperText}>{t('aiHelper')}</Text>
 
           {isEditingHealth && (
             <View style={styles.editActions}>
-              <Button title="Save Profile" onPress={handleSaveHealth} color={colors.primary} style={{ flex: 1, marginRight: 6 }} />
-              <Button title="Cancel" onPress={() => setIsEditingHealth(false)} color={colors.textMuted} style={{ flex: 1, marginLeft: 6 }} />
+              <Button title={t('saveProfile')} onPress={handleSaveHealth} color={colors.primary} style={{ flex: 1, marginRight: 6 }} />
+              <Button title={t('cancel')} onPress={() => setIsEditingHealth(false)} color={colors.textMuted} style={{ flex: 1, marginLeft: 6 }} />
             </View>
           )}
         </View>
 
         {/* Security Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Security</Text>
+          <Text style={styles.cardTitle}>{t('security')}</Text>
           {!user.emailVerified && (
-            <ActionRow iconName="mail-outline" label="Send Verification Email" onPress={handleVerify} />
+            <ActionRow
+              iconName="mail-outline"
+              label={
+                verifyLoading ? '...' :
+                verifyCooldown > 0 ? `${t('sendVerification')} (${verifyCooldown}s)` :
+                t('sendVerification')
+              }
+              onPress={handleVerify}
+              loading={verifyLoading}
+              disabled={verifyCooldown > 0}
+            />
           )}
-          <ActionRow iconName="key-outline" label="Reset Password" onPress={handleReset} />
+          <ActionRow
+            iconName="key-outline"
+            label={
+              resetLoading ? '...' :
+              resetCooldown > 0 ? `${t('resetPassword')} (${resetCooldown}s)` :
+              t('resetPassword')
+            }
+            onPress={handleReset}
+            loading={resetLoading}
+            disabled={resetCooldown > 0}
+          />
         </View>
 
         {/* Danger Zone */}
         <View style={[styles.card, styles.dangerCard]}>
-          <Text style={[styles.cardTitle, { color: colors.red }]}>Danger Zone</Text>
-          <ActionRow iconName="log-out-outline" label="Log Out" onPress={handleLogout} danger />
+          <Text style={[styles.cardTitle, { color: colors.red }]}>{t('dangerZone')}</Text>
+          <ActionRow
+            iconName="log-out-outline"
+            label={logoutLoading ? '...' : t('logOut')}
+            onPress={handleLogout}
+            danger
+            loading={logoutLoading}
+          />
         </View>
       </ScrollView>
+      {/* Inline Logout Confirm Modal */}
+      <Modal transparent animationType="fade" visible={showLogoutConfirm} onRequestClose={() => setShowLogoutConfirm(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Ionicons name="log-out-outline" size={36} color={colors.red} style={{ marginBottom: 12 }} />
+            <Text style={styles.modalTitle}>{t('logOutConfirmTitle')}</Text>
+            <Text style={styles.modalMsg}>{t('logOutConfirmMsg')}</Text>
+            <TouchableOpacity onPress={confirmLogout} style={styles.modalConfirmBtn}>
+              <Text style={styles.modalConfirmText}>{t('confirmLogOut')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowLogoutConfirm(false)} style={styles.modalCancelBtn}>
+              <Text style={styles.modalCancelText}>{t('cancel')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -342,6 +525,31 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     ...shadows.card,
   },
+  toastWrapper: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 0, right: 0,
+    zIndex: 999,
+  },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32,
+  },
+  modalBox: {
+    backgroundColor: colors.white, borderRadius: radius.xl,
+    padding: spacing.xl, alignItems: 'center', width: '100%', ...shadows.card,
+  },
+  modalTitle: { ...typography.h3, color: colors.text, marginBottom: 8 },
+  modalMsg: { ...typography.body, color: colors.textMuted, textAlign: 'center', marginBottom: 24 },
+  modalConfirmBtn: {
+    backgroundColor: colors.red, paddingVertical: 14,
+    borderRadius: radius.full, width: '100%', alignItems: 'center', marginBottom: 10,
+  },
+  modalConfirmText: { color: colors.white, fontWeight: '700', fontSize: 15 },
+  modalCancelBtn: {
+    paddingVertical: 12, width: '100%', alignItems: 'center',
+  },
+  modalCancelText: { color: colors.textMuted, fontWeight: '600', fontSize: 15 },
   dangerCard: { borderWidth: 1.5, borderColor: '#fecaca' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
   cardTitle: { ...typography.h3, color: colors.text },

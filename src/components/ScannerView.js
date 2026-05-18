@@ -46,6 +46,10 @@ export default function ScannerView({ onScan }) {
                 onChangeText={setBarcode}
                 keyboardType="number-pad"
                 placeholderTextColor="#94a3b8"
+
+
+                returnKeyType="done"
+
                 onSubmitEditing={handleScan}
               />
             </View>

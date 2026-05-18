@@ -1,13 +1,21 @@
 import { db, auth } from '../config/firebaseConfig';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, where, limit, serverTimestamp, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
 export const addFood = async (foodData) => {
     try {
         const user = auth.currentUser;
         if (!user) throw new Error("User not authenticated");
-        console.log(`Firestore: Saving food for user: ${user.email} (UID: ${user.uid})`);
 
         const foodsRef = collection(db, `users/${user.uid}/foods`);
+
+        const dupQuery = query(foodsRef, where('product', '==', foodData.product), limit(1));
+        const dupSnap = await getDocs(dupQuery);
+        if (!dupSnap.empty) {
+            const err = new Error('already_saved');
+            err.code = 'already_saved';
+            throw err;
+        }
+
         const docRef = await addDoc(foodsRef, {
             ...foodData,
             createdAt: serverTimestamp(),

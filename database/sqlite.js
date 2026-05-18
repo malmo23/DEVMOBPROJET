@@ -32,22 +32,29 @@ export const initDB = async () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         riskLevel TEXT,
+
         allergies TEXT,
+
+        allergens TEXT,
+
         expiryDate TEXT,
         category TEXT,
         notes TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT
-      );
+      );    
+
     `);
     console.log('✅ Database initialized');
   } catch (error) {
     console.error('❌ Database error:', error);
   }
 };
+
 
 export const saveHealthConditions = async (conditions) => {
   if (isWeb) {
@@ -73,6 +80,8 @@ export const getHealthConditions = async () => {
     return '';
   }
 };
+
+
 
 export const getAllFoods = async () => {
   if (isWeb) {

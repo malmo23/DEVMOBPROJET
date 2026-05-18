@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, Keyboard, ActivityIndicator, TouchableOpacity, StatusBar, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,15 +10,16 @@ import { useLanguage } from '../i18n/LanguageContext';
 const EXAMPLES = ['Coca-Cola', 'Nutella', 'Snickers', 'Pringles', 'Whole Wheat Bread'];
 
 export default function ProductSearchScreen({ navigation }) {
-  const { t } = useLanguage();
+  const { t, toggleLanguage, nextLangLabel } = useLanguage();
   const [productName, setProductName] = useState('');
+  const productNameRef = useRef('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [searching, setSearching] = useState(false);
 
-  const handleSearch = async (name = productName) => {
-    const query = (name || productName).trim();
+  const handleSearch = async (overrideName) => {
+    const query = (overrideName !== undefined ? overrideName : productNameRef.current).trim();
     if (query.length < 2) {
       alert('Please enter a product name');
       return;
@@ -82,7 +83,9 @@ export default function ProductSearchScreen({ navigation }) {
           <Ionicons name="chevron-back" size={26} color={colors.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('findFood')}</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity onPress={toggleLanguage} style={styles.langBtn}>
+          <Text style={styles.langBtnText}>{nextLangLabel}</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView 
@@ -101,9 +104,10 @@ export default function ProductSearchScreen({ navigation }) {
               value={productName}
               onChangeText={(txt) => {
                 setProductName(txt);
+                productNameRef.current = txt;
                 if (hasSearched && results.length > 0) setHasSearched(false);
               }}
-              onSubmitEditing={() => handleSearch()}
+              onSubmitEditing={() => handleSearch(productName)}
               editable={!loading}
             />
             {productName.length > 0 && (
@@ -115,7 +119,7 @@ export default function ProductSearchScreen({ navigation }) {
 
           <Button 
             title={loading ? (t('search') + '...') : t('search')} 
-            onPress={() => handleSearch()} 
+            onPress={() => handleSearch(productName)} 
             color={colors.primary} 
             disabled={loading}
           />
@@ -267,4 +271,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
   chipText: { color: 'rgba(255,255,255,0.8)', fontWeight: '600', fontSize: 13 },
+  langBtn: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  },
+  langBtnText: { color: colors.white, fontSize: 13, fontWeight: '700' },
 });

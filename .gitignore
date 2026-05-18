@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# nested duplicate folders (safe to delete manually)
+/DEVMOBPROJET/
+/FoodRisk-App/
+/PROJECT_BACKUP_2026_04_26/
+/backups/
